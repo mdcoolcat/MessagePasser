@@ -5,14 +5,17 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.Scanner;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 
 import ds.lab.bean.NodeBean;
+import ds.lab.bean.RuleBean;
 import ds.lab.message.Message;
+import ds.lab.message.MessageAction;
+import ds.lab.message.MessageKind;
 
 public class MessagePasser implements MessagePasserApi {
 	private int port = 6781;
@@ -28,6 +31,8 @@ public class MessagePasser implements MessagePasserApi {
 	/** other local information */
 	private String localName;
 	private int lastId = -1;// TODO
+	private int[] nthTracker;
+	private final int NUM_ACTION = 3;//DROP, DUPLICATE, DELAY
 
 	/**
 	 * Constructor read yaml formatted configure file, parse "configuration"
@@ -43,11 +48,13 @@ public class MessagePasser implements MessagePasserApi {
 		inputQueue = new LinkedBlockingDeque<Message>();
 		outputQueue = new LinkedBlockingDeque<Message>();
 		nodeList = new HashMap<String, NodeBean>();
+		nthTracker = new int[NUM_ACTION];
 		// TODO maintain sockets for reuse
 		// sockMap = new HashMap<String, Socket>();
-		// TODO read file...nodelist..rules
+		// TODO read file...nodelist..rules, code in Config.java, replace this by Config.NODELIST
 		nodeList.put(localName, new NodeBean(localName, "192.168.145.1", port));
 		nodeList.put("alice", new NodeBean("alice", "192.168.145.135", 1234));
+		
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {
@@ -85,8 +92,21 @@ public class MessagePasser implements MessagePasserApi {
 	@Override
 	public void send(Message message) {
 		// TODO check rules, sync message id
+		ArrayList<RuleBean> rules = Config.SENDRULES;
+		boolean isDuplicate, isDelay, isDrop;
+		for (RuleBean r : rules) {
+			if (!r.isMatch(message)) {//TODO caution, not check yet
+				System.err.println("SendRule check fails: message dropped");
+				return;
+			}
+//			isDuplicate = r.isDuplicate();
+//			isDelay = r.isDelay();
+//			isDrop = r.isDrop();
+		}
 		message.setId(++lastId);
 		System.out.println(message);
+		/* TODO action */
+		
 		outputQueue.add(message);
 		try {
 			while (!outputQueue.isEmpty())
@@ -98,6 +118,7 @@ public class MessagePasser implements MessagePasserApi {
 			e.printStackTrace();
 		}
 	}
+
 
 	private void connectAndSend(Message message) throws UnknownHostException,
 			IOException {
@@ -176,7 +197,7 @@ public class MessagePasser implements MessagePasserApi {
 					System.out.println("**********Input Message in 144 chars:");
 					String outMessage = sc.nextLine();
 					// TODO kind
-					sendMessage(dest, "default", outMessage);
+					sendMessage(dest, MessageKind.NONE, outMessage);
 					break;
 				case 1:
 					incoming = receive();
@@ -193,7 +214,7 @@ public class MessagePasser implements MessagePasserApi {
 			}
 		}
 
-		private void sendMessage(String dest, String kind, String data) {
+		private void sendMessage(String dest, MessageKind kind, String data) {
 			send(new Message(localName, dest, kind, data));
 		}
 	}

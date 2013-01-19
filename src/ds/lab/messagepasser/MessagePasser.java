@@ -11,6 +11,7 @@ import java.util.Scanner;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
@@ -28,12 +29,14 @@ public class MessagePasser implements MessagePasserApi {
 	/** message */
 	private BlockingQueue<Message> inputQueue; // input queue
 	private BlockingQueue<Message> outputQueue; // output queue
-//	private Message incoming;
+	// private Message incoming;
 	/** other local information */
 	private String localName;
-//	private int lastId = -1;// TODO
-	private int[] nthTracker;
-	private final int NUM_ACTION = 3;//DROP, DUPLICATE, DELAY
+	// private int lastId = -1;// TODO
+	// private int[] nthTracker;
+	private AtomicIntegerArray sendNthTracker;
+	private AtomicIntegerArray rcvNthTracker;
+	private final int NUM_ACTION = 3;// DROP, DUPLICATE, DELAY
 	AtomicInteger lastId;
 
 	/**
@@ -50,20 +53,22 @@ public class MessagePasser implements MessagePasserApi {
 		inputQueue = new LinkedBlockingDeque<Message>();
 		outputQueue = new LinkedBlockingDeque<Message>();
 		nodeList = new HashMap<String, NodeBean>();
-		nthTracker = new int[NUM_ACTION];
+		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
+		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		// TODO maintain sockets for reuse
 		// sockMap = new HashMap<String, Socket>();
-		// TODO read file...nodelist..rules, code in Config.java, replace this by Config.NODELIST
+		// TODO read file...nodelist..rules, code in Config.java, replace this
+		// by Config.NODELIST
 		nodeList.put(localName, new NodeBean(localName, "192.168.145.1", port));
 		nodeList.put("alice", new NodeBean("alice", "192.168.145.136", 1234));
-		
+
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {
 			throw new IllegalArgumentException("Error local name");
 		}
 		this.localName = localName;
-//		this.incoming = new Message();// for initial use
+		// this.incoming = new Message();// for initial use
 		this.lastId = new AtomicInteger(-1);
 		listenSocket = new ServerSocket(me.getPort());
 		ListenThread listener = new ListenThread();
@@ -95,32 +100,65 @@ public class MessagePasser implements MessagePasserApi {
 	@Override
 	public void send(Message message) {
 		// TODO check rules, sync message id
-//		ArrayList<RuleBean> rules = Config.SENDRULES;
-//		boolean isDuplicate, isDelay, isDrop;
-//		for (RuleBean r : rules) {
-//			if (!r.isMatch(message)) {//TODO caution, not check yet
-//				System.err.println("SendRule check fails: message dropped");
-//				return;
-//			}
-////			isDuplicate = r.isDuplicate();
-////			isDelay = r.isDelay();
-////			isDrop = r.isDrop();
-//		}
-		message.setId(lastId.addAndGet(1));
-		System.out.println(message);
-		/* TODO action */
-		
-		outputQueue.add(message);
+		// ArrayList<RuleBean> rules = Config.SENDRULES;
+		ArrayList<RuleBean> rules = new ArrayList<RuleBean>();
+		RuleBean r1 = new RuleBean(MessageAction.DROP);
+		r1.setDest("alice");
+		r1.setNth(2);
+		rules.add(r1);
+		RuleBean r2 = new RuleBean(MessageAction.DUPLICATE);
+		r2.setDest("alice");
+		r2.setEveryNth(3);
+		rules.add(r2);
+		/* rule checking */
+		RuleBean theRule = null;
+		for (RuleBean r : rules) {
+			if (r.isMatch(message)) {// TODO caution, not check yet
+				theRule = r;
+				break;
+			}
+		}
+		System.err.println(theRule);
+		MessageAction action = checkAction(theRule);
 		try {
-			while (!outputQueue.isEmpty())
-				connectAndSend(outputQueue.remove());
+			switch (action) {
+			case DROP:// ignore message
+				message = null;
+				break;
+			case DELAY:
+				message.setId(lastId.incrementAndGet());
+				outputQueue.add(message);// don't send
+				break;
+			case DUPLICATE:
+				sendNthTracker.incrementAndGet(1);
+				Message dup = message.clone();
+				dup.setId(lastId.incrementAndGet());
+				outputQueue.add(dup);
+			case DEFAULT:
+				message.setId(lastId.incrementAndGet());
+				outputQueue.add(message);
+				//now there should be two identical messages
+				while (!outputQueue.isEmpty())
+					connectAndSend(outputQueue.remove());
+			}
+		System.err.println(message);
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();
+		} catch (CloneNotSupportedException e) {
+			e.printStackTrace();
 		}
 	}
 
+	private MessageAction checkAction(RuleBean r) {
+		if (r.hasNoRestriction())// if no specify nth or everyNth, ignore action field..
+			return MessageAction.DEFAULT;
+		int now = sendNthTracker.incrementAndGet(r.getActionIndex());// counter++
+		if ((now == r.getNth()) || (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
+			return r.getAction();
+		return MessageAction.DEFAULT;
+	}
 
 	private void connectAndSend(Message message) throws UnknownHostException,
 			IOException {
@@ -129,7 +167,8 @@ public class MessagePasser implements MessagePasserApi {
 		// if (sendSock == null || sendSock.isClosed()) {
 		NodeBean n = nodeList.get(dest);
 		if (n == null)
-			throw new UnknownHostException("Message Send fails: unknown host " + dest);
+			throw new UnknownHostException("Message Send fails: unknown host "
+					+ dest);
 		Socket sendSock = new Socket(n.getIp(), n.getPort());
 		// synchronized (sockMap) {
 		// sockMap.put(dest, sendSock);
@@ -139,7 +178,7 @@ public class MessagePasser implements MessagePasserApi {
 				sendSock.getOutputStream());
 		out.writeObject(message);
 		out.flush();
-		sendSock.close();//TODO remove if implement reuse
+		sendSock.close();// TODO remove if implement reuse
 	}
 
 	@Override
@@ -152,7 +191,7 @@ public class MessagePasser implements MessagePasserApi {
 	private class ListenThread implements Runnable {
 		@Override
 		public void run() {
-			System.err.println("Listener>>>>>I'm "+localName);
+			System.err.println("Listener>>>>>I'm " + localName);
 			/**
 			 * when a new socket connected, create a new thread to handle the
 			 * request, who's responsible for reading message from the socket
@@ -161,7 +200,7 @@ public class MessagePasser implements MessagePasserApi {
 			try {
 				while (true) {
 					Socket connection = listenSocket.accept();
-//					connection.setKeepAlive(true);
+					// connection.setKeepAlive(true);
 					System.err.println("Listener>>>>>Received: "
 							+ connection.getInetAddress().toString());
 					// TODO pass sockMap to the thread to add socket...
@@ -186,29 +225,33 @@ public class MessagePasser implements MessagePasserApi {
 		public void run() {
 			Scanner sc = new Scanner(System.in);
 			while (true) {
-				System.err.println("**********Choose: 0. Send(S)\t1. Receive(R)");
+				System.err
+						.println("**********Choose: 0. Send(S)\t1. Receive(R)");
 				String input = sc.nextLine().toLowerCase();
-				//TODO string input
-				if (input.equals("0") || input.equals("send") || input.equals("s")) {
+				if (input.equals("0") || input.equals("send")
+						|| input.equals("s")) {
 					System.err.print("**********TO: ");
 					for (String name : nodeList.keySet()) {
-						if (name.equals(localName))//skip self
+						if (name.equals(localName))// skip self
 							continue;
 						System.err.print(name + "\t");
 					}
-					String dest = sc.nextLine();
-					System.err.println("\n**********Input Message in 144 chars:");
+					String dest = sc.nextLine().toLowerCase();
+					System.err
+							.println("\n**********Input Message in 144 chars:");
 					String outMessage = sc.nextLine();
 					// TODO kind
 					sendMessage(dest, MessageKind.NONE, outMessage);
 
-				} else if (input.equals("1") || input.equals("receive") || input.equals("r")) {
+				} else if (input.equals("1") || input.equals("receive")
+						|| input.equals("r")) {
 					Message incoming = receive();
 					if (incoming != null) {
-						lastId.addAndGet(1);
+						lastId.incrementAndGet();
 						System.out.println(incoming.getSrc() + ">"
 								+ incoming.getData());
-						System.err.println("msg left in queue: "+inputQueue.size());
+						System.err.println("msg left in queue: "
+								+ inputQueue.size());
 					} else
 						System.err.println("**********no message");
 				} else {
@@ -217,7 +260,7 @@ public class MessagePasser implements MessagePasserApi {
 			}
 		}
 
-		private void sendMessage(String dest, MessageKind kind, String data) {
+		private void sendMessage(String dest, MessageKind kind, Object data) {
 			send(new Message(localName, dest, kind, data));
 		}
 	}

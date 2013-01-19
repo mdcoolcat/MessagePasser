@@ -13,8 +13,8 @@ public class RuleBean {
 	private MessageKind kind;
 	private int id = -1;
 	/** optional */
-	private int nth;
-	private int everyNth;
+	private int nth = -1;
+	private int everyNth = -1;
 	
 	public RuleBean() {};
 	
@@ -23,32 +23,36 @@ public class RuleBean {
 		this.action = action;
 	}
 
-	public boolean isDrop() {
-		return this.action == MessageAction.DROP;
-	}
-	
-	public boolean isDelay() {
-		return this.action == MessageAction.DELAY;
-	}
-	
-	public boolean isDuplicate() {
-		return this.action == MessageAction.DUPLICATE;
-	}
 	public boolean isMatch(Message m) {
-//		boolean match = true;
-		if (this.id != -1 && this.id != m.getId())
+		assert action != null;
+		if (id == -1 && src == null && dest == null && kind == null)	//only contains action, it matches all msg
+			return true;
+		if (id != -1 && id != m.getId())
 			return false;
-		if (this.src != null && !this.src.equals(m.getSrc()))
+		if (src != null && !src.equals(m.getSrc()))
 			return false;
-		if (this.dest != null && !this.dest.equals(m.getDest()))
+		if (dest != null && !dest.equals(m.getDest()))
 			return false;
-		if (this.kind != null && !this.kind.equals(m.getKind()))
+		if (kind != null && !kind.equals(m.getKind()))
 			return false;
 		return true;
+	}
+	public boolean hasNoRestriction() {
+		assert action != null;
+		return (nth < 0) && (everyNth < 0);
 	}
 	
 	public MessageAction getAction() {
 		return action;
+	}
+	public int getActionIndex() {
+		switch (action) {
+		case DROP:return 0;
+		case DUPLICATE:return 1;
+		case DELAY:return 2;
+		}
+		System.err.println("ERROR: Unsupported action");
+		return -1;
 	}
 
 	//TODO change to string if parse is difficult for this type
@@ -105,5 +109,9 @@ public class RuleBean {
 		this.nth = nth;
 	}
 
+	@Override
+	public String toString() {
+		return dest+" nth:"+nth+" everyN:"+everyNth;
+	}
 
 }

@@ -3,7 +3,7 @@ package ds.lab.message;
 
 import java.io.Serializable;
 
-public class Message implements Serializable {
+public class Message implements Serializable, Cloneable {
 
 	/**
 	 * header and payload
@@ -50,12 +50,15 @@ public class Message implements Serializable {
 		this.data = data;
 	}
 
+	@Override
+	public Message clone() throws CloneNotSupportedException {
+		return new Message(getSrc(), getDest(), getKind(), data);
+	}
 	
 	@Override
 	public String toString() {
 		return this.header + "\n" + data;
 	}
-
 
 
 	private class Header implements Serializable {

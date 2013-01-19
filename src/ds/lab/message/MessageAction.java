@@ -6,5 +6,5 @@ package ds.lab.message;
  *
  */
 public enum MessageAction {
-	DROP, DUPLICATE, DELAY;
+	DROP, DUPLICATE, DELAY, DEFAULT;
 }

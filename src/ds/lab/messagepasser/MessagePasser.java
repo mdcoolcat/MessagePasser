@@ -112,31 +112,32 @@ public class MessagePasser implements MessagePasserApi {
 		RuleBean theRule = getMatchedSendRule(message);
 		System.err.println(theRule);
 		if (theRule == null) {
-			System.err
-					.println("Messager> Error: no rule matches for current pair. Return");
+			System.err.println("Messager> Error: no rule matches for current pair. Return");
 			return;
 		}
 		MessageAction action = checkSendAction(theRule);
 		try {
+			Message dup = null;
 			switch (action) {
 			case DROP:// ignore message
 				message = null;
 				break;
 			case DELAY:
 				message.setId(lastId.incrementAndGet());
-				outputQueue.add(message);// don't send
+				delayOutputQueue.add(message);// don't send
 				break;
 			case DUPLICATE:
 				sendNthTracker.incrementAndGet(1);
-				Message dup = message.clone();
+				dup = message.clone();
 				dup.setId(lastId.incrementAndGet());
-				outputQueue.add(dup);
 			case DEFAULT:
 				message.setId(lastId.incrementAndGet());
 				outputQueue.add(message);
-				// now there should be two identical messages
-				while (!outputQueue.isEmpty())
-					connectAndSend(outputQueue.remove());
+				// now there should be two identical messages. Send all delayed first
+				while (!delayOutputQueue.isEmpty())
+					connectAndSend(delayOutputQueue.remove());
+				connectAndSend(dup);//TODO I didin't add the dup to queue.
+				connectAndSend(outputQueue.remove());
 			}
 			System.err.println(message);
 		} catch (UnknownHostException e) {

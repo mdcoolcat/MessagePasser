@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Scanner;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
@@ -27,12 +28,13 @@ public class MessagePasser implements MessagePasserApi {
 	/** message */
 	private BlockingQueue<Message> inputQueue; // input queue
 	private BlockingQueue<Message> outputQueue; // output queue
-	private Message incoming;
+//	private Message incoming;
 	/** other local information */
 	private String localName;
-	private int lastId = -1;// TODO
+//	private int lastId = -1;// TODO
 	private int[] nthTracker;
 	private final int NUM_ACTION = 3;//DROP, DUPLICATE, DELAY
+	AtomicInteger lastId;
 
 	/**
 	 * Constructor read yaml formatted configure file, parse "configuration"
@@ -61,7 +63,8 @@ public class MessagePasser implements MessagePasserApi {
 			throw new IllegalArgumentException("Error local name");
 		}
 		this.localName = localName;
-		this.incoming = new Message();// for initial use
+//		this.incoming = new Message();// for initial use
+		this.lastId = new AtomicInteger(-1);
 		listenSocket = new ServerSocket(me.getPort());
 		ListenThread listener = new ListenThread();
 		// TODO for loop MAX_THREAD
@@ -82,7 +85,7 @@ public class MessagePasser implements MessagePasserApi {
 		}
 
 		try {
-			MessagePasser me = new MessagePasser("", argv[0].toLowerCase());
+			new MessagePasser("", argv[0].toLowerCase());
 
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -92,18 +95,18 @@ public class MessagePasser implements MessagePasserApi {
 	@Override
 	public void send(Message message) {
 		// TODO check rules, sync message id
-		ArrayList<RuleBean> rules = Config.SENDRULES;
-		boolean isDuplicate, isDelay, isDrop;
-		for (RuleBean r : rules) {
-			if (!r.isMatch(message)) {//TODO caution, not check yet
-				System.err.println("SendRule check fails: message dropped");
-				return;
-			}
-//			isDuplicate = r.isDuplicate();
-//			isDelay = r.isDelay();
-//			isDrop = r.isDrop();
-		}
-		message.setId(++lastId);
+//		ArrayList<RuleBean> rules = Config.SENDRULES;
+//		boolean isDuplicate, isDelay, isDrop;
+//		for (RuleBean r : rules) {
+//			if (!r.isMatch(message)) {//TODO caution, not check yet
+//				System.err.println("SendRule check fails: message dropped");
+//				return;
+//			}
+////			isDuplicate = r.isDuplicate();
+////			isDelay = r.isDelay();
+////			isDrop = r.isDrop();
+//		}
+		message.setId(lastId.addAndGet(1));
 		System.out.println(message);
 		/* TODO action */
 		
@@ -113,7 +116,6 @@ public class MessagePasser implements MessagePasserApi {
 				connectAndSend(outputQueue.remove());
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
-
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -135,23 +137,20 @@ public class MessagePasser implements MessagePasserApi {
 				sendSock.getOutputStream());
 		out.writeObject(message);
 		out.flush();
+		sendSock.close();//TODO remove if implement reuse
 	}
 
 	@Override
 	public Message receive() {
-		System.out.println("in receive..." + lastId);
 		if (!inputQueue.isEmpty())
-			incoming = inputQueue.remove();
-		System.out.println("message left in queue: " + inputQueue.size());
-		return incoming;
+			return inputQueue.remove();
+		return null;
 	}
 
 	private class ListenThread implements Runnable {
-		// Socket connection = null;
-
 		@Override
 		public void run() {
-			System.out.println(">>>>>I'm lisening...");
+			System.err.println("Listener>>>>>I'm "+localName);
 			/**
 			 * when a new socket connected, create a new thread to handle the
 			 * request, who's responsible for reading message from the socket
@@ -161,7 +160,7 @@ public class MessagePasser implements MessagePasserApi {
 				while (true) {
 					Socket connection = listenSocket.accept();
 					connection.setKeepAlive(true);
-					System.out.println(">>>>>Received: "
+					System.err.println("Listener>>>>>Received: "
 							+ connection.getInetAddress().toString());
 					// TODO pass sockMap to the thread to add socket...
 					new WorkerThread(connection, inputQueue);
@@ -183,33 +182,34 @@ public class MessagePasser implements MessagePasserApi {
 	private class UserThread implements Runnable {
 		@Override
 		public void run() {
-			System.out.println("**********User thread starts");
 			Scanner sc = new Scanner(System.in);
 			while (true) {
-				System.out.println("**********Choose: 0. Send\t1. Receive");
+				System.err.println("**********Choose: 0. Send\t1. Receive");
 				String input = sc.nextLine();
 				int choose = Integer.parseInt(input);
 				switch (choose) {
 				case 0:
-					System.out
-							.println("**********To: 0. alice\t1. charlie\t...");
+					System.err.println("**********To: 0. alice\t1. charlie\t...");
 					String dest = sc.nextLine();
-					System.out.println("**********Input Message in 144 chars:");
+					System.err.println("**********Input Message in 144 chars:");
 					String outMessage = sc.nextLine();
 					// TODO kind
 					sendMessage(dest, MessageKind.NONE, outMessage);
 					break;
 				case 1:
-					incoming = receive();
-					if (incoming.getId() != lastId) {
-						lastId = incoming.getId();
+					Message incoming = receive();
+					//TODO id
+					if (incoming != null) {
+//						lastId = incoming.getId();
+						lastId.addAndGet(1);
 						System.out.println(incoming.getSrc() + ">"
 								+ incoming.getData());
+						System.err.println("msg left in queue: "+inputQueue.size());
 					} else
 						System.err.println("**********no message");
 					break;
 				default:
-					System.out.println("Invalid input");
+					System.err.println("Invalid input");
 				}
 			}
 		}

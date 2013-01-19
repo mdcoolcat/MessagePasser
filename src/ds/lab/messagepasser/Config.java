@@ -10,6 +10,7 @@ public class Config {
 	public static HashMap<String, NodeBean> NODELIST;
 	public static ArrayList<RuleBean> SENDRULES;
 	public static ArrayList<RuleBean> RECEIVERULES;
+	public static int NUM_NODE = 4;
 	
 	public static void parseConfigFile(String configurationFile, String localName) {
 		//TODO read file...nodelist..rules

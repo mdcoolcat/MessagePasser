@@ -48,7 +48,7 @@ public class WorkerThread implements Runnable {
 			// System.out.println("put sockmap: "+tmp.getSrc());
 			// }
 			if (tmp.getData() == null) {
-				System.out.println(connection.getInetAddress().getHostAddress()
+				System.err.println("worker>>>>" + connection.getInetAddress().getHostAddress()
 						+ " went offile");
 			} else {
 				inputQueue.add(tmp);
@@ -56,7 +56,7 @@ public class WorkerThread implements Runnable {
 
 		} catch (IOException e) {
 			if (e instanceof EOFException) {
-				System.out.println("end...eof");
+				System.err.println("end...eof");
 			} else {
 				e.printStackTrace();
 			}

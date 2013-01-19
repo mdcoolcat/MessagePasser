@@ -21,7 +21,7 @@ import ds.lab.message.MessageKind;
 public class MessagePasser implements MessagePasserApi {
 	private int port = 6781;
 	/** multithreading, node management */
-	private final int MAX_THREAD = 4;
+	private final int MAX_THREAD = Config.NUM_NODE;
 	private ServerSocket listenSocket;
 	private HashMap<String, NodeBean> nodeList;// name-user
 	// private HashMap<String, Socket> sockMap;// name-socket
@@ -55,7 +55,7 @@ public class MessagePasser implements MessagePasserApi {
 		// sockMap = new HashMap<String, Socket>();
 		// TODO read file...nodelist..rules, code in Config.java, replace this by Config.NODELIST
 		nodeList.put(localName, new NodeBean(localName, "192.168.145.1", port));
-		nodeList.put("alice", new NodeBean("alice", "192.168.145.135", 1234));
+		nodeList.put("alice", new NodeBean("alice", "192.168.145.136", 1234));
 		
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
@@ -128,6 +128,8 @@ public class MessagePasser implements MessagePasserApi {
 		// Socket sendSock = sockMap.get(dest);
 		// if (sendSock == null || sendSock.isClosed()) {
 		NodeBean n = nodeList.get(dest);
+		if (n == null)
+			throw new UnknownHostException("Message Send fails: unknown host " + dest);
 		Socket sendSock = new Socket(n.getIp(), n.getPort());
 		// synchronized (sockMap) {
 		// sockMap.put(dest, sendSock);
@@ -159,7 +161,7 @@ public class MessagePasser implements MessagePasserApi {
 			try {
 				while (true) {
 					Socket connection = listenSocket.accept();
-					connection.setKeepAlive(true);
+//					connection.setKeepAlive(true);
 					System.err.println("Listener>>>>>Received: "
 							+ connection.getInetAddress().toString());
 					// TODO pass sockMap to the thread to add socket...
@@ -184,31 +186,32 @@ public class MessagePasser implements MessagePasserApi {
 		public void run() {
 			Scanner sc = new Scanner(System.in);
 			while (true) {
-				System.err.println("**********Choose: 0. Send\t1. Receive");
-				String input = sc.nextLine();
-				int choose = Integer.parseInt(input);
-				switch (choose) {
-				case 0:
-					System.err.println("**********To: 0. alice\t1. charlie\t...");
+				System.err.println("**********Choose: 0. Send(S)\t1. Receive(R)");
+				String input = sc.nextLine().toLowerCase();
+				//TODO string input
+				if (input.equals("0") || input.equals("send") || input.equals("s")) {
+					System.err.print("**********TO: ");
+					for (String name : nodeList.keySet()) {
+						if (name.equals(localName))//skip self
+							continue;
+						System.err.print(name + "\t");
+					}
 					String dest = sc.nextLine();
-					System.err.println("**********Input Message in 144 chars:");
+					System.err.println("\n**********Input Message in 144 chars:");
 					String outMessage = sc.nextLine();
 					// TODO kind
 					sendMessage(dest, MessageKind.NONE, outMessage);
-					break;
-				case 1:
+
+				} else if (input.equals("1") || input.equals("receive") || input.equals("r")) {
 					Message incoming = receive();
-					//TODO id
 					if (incoming != null) {
-//						lastId = incoming.getId();
 						lastId.addAndGet(1);
 						System.out.println(incoming.getSrc() + ">"
 								+ incoming.getData());
 						System.err.println("msg left in queue: "+inputQueue.size());
 					} else
 						System.err.println("**********no message");
-					break;
-				default:
+				} else {
 					System.err.println("Invalid input");
 				}
 			}

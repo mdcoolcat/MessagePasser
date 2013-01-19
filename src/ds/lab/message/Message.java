@@ -14,10 +14,10 @@ public class Message implements Serializable {
 	private Object data = null;	
 	
 	public Message() {
-		this.header = new Header("", "", "");
+		this.header = new Header("", "", MessageKind.NONE);
 		setId(-1);//for initial use
 	}
-	public Message(String src, String dest, String kind, Object data) {
+	public Message(String src, String dest, MessageKind kind, Object data) {
 		assert src != null;
 		assert dest != null;
 		//TODO assert kind != null;
@@ -38,6 +38,9 @@ public class Message implements Serializable {
 	}
 	public String getSrc() {
 		return header.src;
+	}
+	public MessageKind getKind() {
+		return header.kind;
 	}
 	public Object getData() {
 		return data;
@@ -63,9 +66,9 @@ public class Message implements Serializable {
 		int id;
 		String src;
 		String dest;
-		String kind;
+		MessageKind kind;
 		
-		public Header(String src, String dest, String kind) {
+		public Header(String src, String dest, MessageKind kind) {
 			this.src = src;
 			this.dest = dest;
 			this.kind = kind;

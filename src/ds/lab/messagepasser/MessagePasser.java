@@ -7,6 +7,7 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -22,7 +23,7 @@ import ds.lab.message.MessageKind;
 public class MessagePasser implements MessagePasserApi {
 	private int port = 6781;
 	/** multithreading, node management */
-	private final int MAX_THREAD = Config.NUM_NODE;
+	private int MAX_THREAD;
 	private ServerSocket listenSocket;
 	private HashMap<String, NodeBean> nodeList;// name-user
 	// private HashMap<String, Socket> sockMap;// name-socket
@@ -50,9 +51,11 @@ public class MessagePasser implements MessagePasserApi {
 	 */
 	public MessagePasser(String configurationFile, String localName)
 			throws IOException {
+		Config.parseConfigFile(configurationFile, localName);
+		MAX_THREAD = Config.NUM_NODE;
 		inputQueue = new LinkedBlockingDeque<Message>();
 		outputQueue = new LinkedBlockingDeque<Message>();
-		nodeList = new HashMap<String, NodeBean>();
+		nodeList = new HashMap<String, NodeBean>();//TODO Config.NODELIST
 		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		// TODO maintain sockets for reuse
@@ -60,7 +63,7 @@ public class MessagePasser implements MessagePasserApi {
 		// TODO read file...nodelist..rules, code in Config.java, replace this
 		// by Config.NODELIST
 		nodeList.put(localName, new NodeBean(localName, "192.168.145.1", port));
-		nodeList.put("alice", new NodeBean("alice", "192.168.145.136", 1234));
+		nodeList.put("alice", new NodeBean("alice", "192.168.145.137", 1234));
 
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
@@ -99,26 +102,13 @@ public class MessagePasser implements MessagePasserApi {
 
 	@Override
 	public void send(Message message) {
-		// TODO check rules, sync message id
-		// ArrayList<RuleBean> rules = Config.SENDRULES;
-		ArrayList<RuleBean> rules = new ArrayList<RuleBean>();
-		RuleBean r1 = new RuleBean(MessageAction.DROP);
-		r1.setDest("alice");
-		r1.setNth(2);
-		rules.add(r1);
-		RuleBean r2 = new RuleBean(MessageAction.DUPLICATE);
-		r2.setDest("alice");
-		r2.setEveryNth(3);
-		rules.add(r2);
-		/* rule checking */
-		RuleBean theRule = null;
-		for (RuleBean r : rules) {
-			if (r.isMatch(message)) {// TODO caution, not check yet
-				theRule = r;
-				break;
-			}
-		}
+		// TODO sync message id
+		RuleBean theRule = getMatchedRule(message);
 		System.err.println(theRule);
+		if (theRule == null) {
+			System.err.println("Messager> Error: no rule matches for current pair. Return");
+			return;
+		}
 		MessageAction action = checkAction(theRule);
 		try {
 			switch (action) {
@@ -151,6 +141,18 @@ public class MessagePasser implements MessagePasserApi {
 		}
 	}
 
+	private RuleBean getMatchedRule(Message message) {
+		ArrayList<RuleBean> rules = Config.SENDRULES;
+		RuleBean theRule = null;
+		for (RuleBean r : rules) {
+			if (r.isMatch(message)) {
+				theRule = r;
+				break;
+			}
+		}
+		return theRule;
+	}
+
 	private MessageAction checkAction(RuleBean r) {
 		if (r.hasNoRestriction())// if no specify nth or everyNth, ignore action field..
 			return MessageAction.DEFAULT;
@@ -174,8 +176,7 @@ public class MessagePasser implements MessagePasserApi {
 		// sockMap.put(dest, sendSock);
 		// }
 		// }
-		ObjectOutputStream out = new ObjectOutputStream(
-				sendSock.getOutputStream());
+		ObjectOutputStream out = new ObjectOutputStream(sendSock.getOutputStream());
 		out.writeObject(message);
 		out.flush();
 		sendSock.close();// TODO remove if implement reuse
@@ -191,7 +192,7 @@ public class MessagePasser implements MessagePasserApi {
 	private class ListenThread implements Runnable {
 		@Override
 		public void run() {
-			System.err.println("Listener>>>>>I'm " + localName);
+			System.err.println("Listener> I'm " + localName);
 			/**
 			 * when a new socket connected, create a new thread to handle the
 			 * request, who's responsible for reading message from the socket
@@ -201,7 +202,7 @@ public class MessagePasser implements MessagePasserApi {
 				while (true) {
 					Socket connection = listenSocket.accept();
 					// connection.setKeepAlive(true);
-					System.err.println("Listener>>>>>Received: "
+					System.err.println("Listener> Received: "
 							+ connection.getInetAddress().toString());
 					// TODO pass sockMap to the thread to add socket...
 					new WorkerThread(connection, inputQueue);
@@ -224,13 +225,13 @@ public class MessagePasser implements MessagePasserApi {
 		@Override
 		public void run() {
 			Scanner sc = new Scanner(System.in);
+			try {
 			while (true) {
-				System.err
-						.println("**********Choose: 0. Send(S)\t1. Receive(R)");
+				System.err.println("Messager> Choose: 0. Send(S)\t1. Receive(R)");
 				String input = sc.nextLine().toLowerCase();
 				if (input.equals("0") || input.equals("send")
 						|| input.equals("s")) {
-					System.err.print("**********TO: ");
+					System.err.print("Messager> TO: ");
 					for (String name : nodeList.keySet()) {
 						if (name.equals(localName))// skip self
 							continue;
@@ -238,7 +239,7 @@ public class MessagePasser implements MessagePasserApi {
 					}
 					String dest = sc.nextLine().toLowerCase();
 					System.err
-							.println("\n**********Input Message in 144 chars:");
+							.println("\nMessager> Input Message in 144 chars:");
 					String outMessage = sc.nextLine();
 					// TODO kind
 					sendMessage(dest, MessageKind.NONE, outMessage);
@@ -253,10 +254,15 @@ public class MessagePasser implements MessagePasserApi {
 						System.err.println("msg left in queue: "
 								+ inputQueue.size());
 					} else
-						System.err.println("**********no message");
+						System.err.println("Messager> no message");
 				} else {
-					System.err.println("Invalid input");
+					System.err.println("Messager> Invalid input");
 				}
+			}
+			} catch (NoSuchElementException e) {
+				System.err.println("Messager> User press CTRL+C. Bye!");
+			} finally {
+				sc.close();
 			}
 		}
 

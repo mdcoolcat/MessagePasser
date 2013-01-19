@@ -23,6 +23,11 @@ public class RuleBean {
 		this.action = action;
 	}
 
+	/**
+	 * check if the incoming message match sendRule
+	 * @param m
+	 * @return
+	 */
 	public boolean isMatch(Message m) {
 		assert action != null;
 		if (id == -1 && src == null && dest == null && kind == null)	//only contains action, it matches all msg
@@ -37,6 +42,7 @@ public class RuleBean {
 			return false;
 		return true;
 	}
+
 	public boolean hasNoRestriction() {
 		assert action != null;
 		return (nth < 0) && (everyNth < 0);

@@ -30,6 +30,8 @@ public class MessagePasser implements MessagePasserApi {
 	/** message */
 	private BlockingQueue<Message> inputQueue; // input queue
 	private BlockingQueue<Message> outputQueue; // output queue
+	private BlockingQueue<Message> delayInputQueue; // input queue
+	private BlockingQueue<Message> delayOutputQueue; // output queue
 	// private Message incoming;
 	/** other local information */
 	private String localName;
@@ -53,11 +55,7 @@ public class MessagePasser implements MessagePasserApi {
 			throws IOException {
 		Config.parseConfigFile(configurationFile, localName);
 		MAX_THREAD = Config.NUM_NODE;
-		inputQueue = new LinkedBlockingDeque<Message>();
-		outputQueue = new LinkedBlockingDeque<Message>();
-		nodeList = new HashMap<String, NodeBean>();//TODO Config.NODELIST
-		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
-		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
+		nodeList = new HashMap<String, NodeBean>();// TODO Config.NODELIST
 		// TODO maintain sockets for reuse
 		// sockMap = new HashMap<String, Socket>();
 		// TODO read file...nodelist..rules, code in Config.java, replace this
@@ -73,6 +71,14 @@ public class MessagePasser implements MessagePasserApi {
 		this.localName = localName;
 		// this.incoming = new Message();// for initial use
 		this.lastId = new AtomicInteger(-1);
+		/* queues and trackers */
+		inputQueue = new LinkedBlockingDeque<Message>();
+		outputQueue = new LinkedBlockingDeque<Message>();
+		delayInputQueue = new LinkedBlockingDeque<Message>();
+		delayOutputQueue = new LinkedBlockingDeque<Message>();
+		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
+		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
+		/* listener */
 		listenSocket = new ServerSocket(me.getPort());
 		ListenThread listener = new ListenThread();
 		// TODO for loop MAX_THREAD
@@ -103,13 +109,14 @@ public class MessagePasser implements MessagePasserApi {
 	@Override
 	public void send(Message message) {
 		// TODO sync message id
-		RuleBean theRule = getMatchedRule(message);
+		RuleBean theRule = getMatchedSendRule(message);
 		System.err.println(theRule);
 		if (theRule == null) {
-			System.err.println("Messager> Error: no rule matches for current pair. Return");
+			System.err
+					.println("Messager> Error: no rule matches for current pair. Return");
 			return;
 		}
-		MessageAction action = checkAction(theRule);
+		MessageAction action = checkSendAction(theRule);
 		try {
 			switch (action) {
 			case DROP:// ignore message
@@ -127,11 +134,11 @@ public class MessagePasser implements MessagePasserApi {
 			case DEFAULT:
 				message.setId(lastId.incrementAndGet());
 				outputQueue.add(message);
-				//now there should be two identical messages
+				// now there should be two identical messages
 				while (!outputQueue.isEmpty())
 					connectAndSend(outputQueue.remove());
 			}
-		System.err.println(message);
+			System.err.println(message);
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
@@ -141,7 +148,7 @@ public class MessagePasser implements MessagePasserApi {
 		}
 	}
 
-	private RuleBean getMatchedRule(Message message) {
+	private RuleBean getMatchedSendRule(Message message) {
 		ArrayList<RuleBean> rules = Config.SENDRULES;
 		RuleBean theRule = null;
 		for (RuleBean r : rules) {
@@ -153,11 +160,82 @@ public class MessagePasser implements MessagePasserApi {
 		return theRule;
 	}
 
-	private MessageAction checkAction(RuleBean r) {
-		if (r.hasNoRestriction())// if no specify nth or everyNth, ignore action field..
+	private MessageAction checkSendAction(RuleBean r) {
+		if (r.hasNoRestriction())// if no specify nth or everyNth, ignore action
+									// field..
 			return MessageAction.DEFAULT;
 		int now = sendNthTracker.incrementAndGet(r.getActionIndex());// counter++
-		if ((now == r.getNth()) || (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
+		if ((now == r.getNth())
+				|| (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
+			return r.getAction();
+		return MessageAction.DEFAULT;
+	}
+
+	@Override
+	public ArrayList<Message> receive() {
+		ArrayList<Message> incoming = null;
+		if (!inputQueue.isEmpty()) {
+			Message message = inputQueue.remove();// examine the 1st one
+			RuleBean theRule = getMatchedReceiveRule(message);
+			System.err.println(theRule);
+			if (theRule == null) {
+				System.err
+						.println("Messager> Error: no rule matches for current pair. Return");
+				return null;
+			}
+			MessageAction action = checkReceiveAction(theRule);
+			try {
+				Message dup = null;
+				switch (action) {
+				case DROP:// drop message TODO lastId???
+					break;
+				case DELAY:// move the message to delayQUeue
+					delayInputQueue.add(message);
+					break;
+				case DUPLICATE:
+					rcvNthTracker.incrementAndGet(1);
+					dup = message.clone();// add to list later
+					dup.setId(lastId.incrementAndGet());
+					// inputQueue.add(dup);
+				case DEFAULT:
+					// now there should be two identical messages to deliver.
+					// first deliver all delayed messages, then add the new
+					// one(s)
+					incoming = new ArrayList<Message>();
+					while (!delayInputQueue.isEmpty())
+						incoming.add(delayInputQueue.remove());
+					incoming.add(message);
+					if (dup != null)
+						incoming.add(dup);
+				}
+
+			} catch (CloneNotSupportedException e) {
+				e.printStackTrace();
+			}
+		}
+		return incoming;
+	}
+
+	private RuleBean getMatchedReceiveRule(Message message) {
+		ArrayList<RuleBean> rules = Config.RECEIVERULES;
+		RuleBean theRule = null;
+		for (RuleBean r : rules) {
+			if (r.isMatch(message)) {
+				theRule = r;
+				break;
+			}
+		}
+		return theRule;
+	}
+
+	private MessageAction checkReceiveAction(RuleBean r) {
+		if (r.hasNoRestriction())// if no specify nth or everyNth, ignore action
+									// field..
+			return MessageAction.DEFAULT;
+		int now = rcvNthTracker.incrementAndGet(r.getActionIndex());// TODO
+																	// caution
+		if ((now == r.getNth())
+				|| (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
 			return r.getAction();
 		return MessageAction.DEFAULT;
 	}
@@ -176,17 +254,11 @@ public class MessagePasser implements MessagePasserApi {
 		// sockMap.put(dest, sendSock);
 		// }
 		// }
-		ObjectOutputStream out = new ObjectOutputStream(sendSock.getOutputStream());
+		ObjectOutputStream out = new ObjectOutputStream(
+				sendSock.getOutputStream());
 		out.writeObject(message);
 		out.flush();
 		sendSock.close();// TODO remove if implement reuse
-	}
-
-	@Override
-	public Message receive() {
-		if (!inputQueue.isEmpty())
-			return inputQueue.remove();
-		return null;
 	}
 
 	private class ListenThread implements Runnable {
@@ -226,39 +298,42 @@ public class MessagePasser implements MessagePasserApi {
 		public void run() {
 			Scanner sc = new Scanner(System.in);
 			try {
-			while (true) {
-				System.err.println("Messager> Choose: 0. Send(S)\t1. Receive(R)");
-				String input = sc.nextLine().toLowerCase();
-				if (input.equals("0") || input.equals("send")
-						|| input.equals("s")) {
-					System.err.print("Messager> TO: ");
-					for (String name : nodeList.keySet()) {
-						if (name.equals(localName))// skip self
-							continue;
-						System.err.print(name + "\t");
-					}
-					String dest = sc.nextLine().toLowerCase();
+				while (true) {
 					System.err
-							.println("\nMessager> Input Message in 144 chars:");
-					String outMessage = sc.nextLine();
-					// TODO kind
-					sendMessage(dest, MessageKind.NONE, outMessage);
+							.println("Messager> Choose: 0. Send(S)\t1. Receive(R)");
+					String input = sc.nextLine().toLowerCase();
+					if (input.equals("0") || input.equals("send")
+							|| input.equals("s")) {
+						System.err.print("Messager> TO: ");
+						for (String name : nodeList.keySet()) {
+							if (name.equals(localName))// skip self
+								continue;
+							System.err.print(name + "\t");
+						}
+						String dest = sc.nextLine().toLowerCase();
+						System.err
+								.println("\nMessager> Input Message in 144 chars:");
+						String outMessage = sc.nextLine();
+						// TODO kind
+						sendMessage(dest, MessageKind.NONE, outMessage);
 
-				} else if (input.equals("1") || input.equals("receive")
-						|| input.equals("r")) {
-					Message incoming = receive();
-					if (incoming != null) {
-						lastId.incrementAndGet();
-						System.out.println(incoming.getSrc() + ">"
-								+ incoming.getData());
-						System.err.println("msg left in queue: "
-								+ inputQueue.size());
-					} else
-						System.err.println("Messager> no message");
-				} else {
-					System.err.println("Messager> Invalid input");
+					} else if (input.equals("1") || input.equals("receive")
+							|| input.equals("r")) {
+						ArrayList<Message> incoming = receive();
+						if (incoming != null) {
+							for (Message m : incoming) {
+								lastId.incrementAndGet();
+								System.out.println(m.getSrc() + ">"
+										+ m.getData());
+							}
+							System.err.println("msg left in queue: "
+									+ inputQueue.size());
+						} else
+							System.err.println("Messager> no message");
+					} else {
+						System.err.println("Messager> Invalid input");
+					}
 				}
-			}
 			} catch (NoSuchElementException e) {
 				System.err.println("Messager> User press CTRL+C. Bye!");
 			} finally {

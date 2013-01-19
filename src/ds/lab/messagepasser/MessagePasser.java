@@ -179,8 +179,7 @@ public class MessagePasser implements MessagePasserApi {
 			RuleBean theRule = getMatchedReceiveRule(message);
 			System.err.println(theRule);
 			if (theRule == null) {
-				System.err
-						.println("Messager> Error: no rule matches for current pair. Return");
+				System.err.println("Messager> Error: no rule matches for current pair. Return");
 				return null;
 			}
 			MessageAction action = checkReceiveAction(theRule);

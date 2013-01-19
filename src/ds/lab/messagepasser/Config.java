@@ -15,15 +15,22 @@ public class Config {
 	
 	public static void parseConfigFile(String configurationFile, String localName) {
 		//TODO read file...nodelist..rules
-		ArrayList<RuleBean> rules = new ArrayList<RuleBean>();
+		ArrayList<RuleBean> sendRules = new ArrayList<RuleBean>();
 		RuleBean r1 = new RuleBean(MessageAction.DUPLICATE);
 		r1.setDest("charlie");
 		r1.setNth(2);
-		rules.add(r1);
+		sendRules.add(r1);
 		RuleBean r2 = new RuleBean(MessageAction.DELAY);
 		r2.setDest("alice");
-		r2.setEveryNth(1);
-		rules.add(r2);
-		SENDRULES = rules;
+		r2.setEveryNth(2);
+		sendRules.add(r2);
+		SENDRULES = sendRules;
+		
+		ArrayList<RuleBean> receiveRules = new ArrayList<RuleBean>();
+		RuleBean r3 = new RuleBean(MessageAction.DELAY);
+		r3.setSrc("alice");
+		r3.setEveryNth(2);
+		receiveRules.add(r3);
+		RECEIVERULES = receiveRules;
 	}
 }

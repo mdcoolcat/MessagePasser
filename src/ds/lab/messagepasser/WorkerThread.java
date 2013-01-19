@@ -43,8 +43,6 @@ public class WorkerThread implements Runnable {
 			rcved = in.readObject();
 			// TODO data type swtich
 			Message tmp = (Message) rcved;
-			System.out.println("Before receive: queue size "
-					+ inputQueue.size());
 			// synchronized (sockMap) {
 			// sockMap.put(tmp.getSrc(), connection);
 			// System.out.println("put sockmap: "+tmp.getSrc());
@@ -55,8 +53,6 @@ public class WorkerThread implements Runnable {
 			} else {
 				inputQueue.add(tmp);
 			}
-			System.out
-					.println("After receive: queue size " + inputQueue.size());
 
 		} catch (IOException e) {
 			if (e instanceof EOFException) {

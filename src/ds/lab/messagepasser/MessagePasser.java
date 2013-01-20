@@ -55,14 +55,12 @@ public class MessagePasser implements MessagePasserApi {
 			throws IOException {
 		Config.parseConfigFile(configurationFile, localName);
 		MAX_THREAD = Config.NUM_NODE;
-		nodeList = new HashMap<String, NodeBean>();// TODO Config.NODELIST
+//		nodeList = new HashMap<String, NodeBean>();// TODO Config.NODELIST
+//		nodeList.put(localName, new NodeBean(localName, "192.168.145.1", port));
+//		nodeList.put("alice", new NodeBean("alice", "192.168.145.138", 1234));
+		nodeList = Config.NODELIST;
 		// TODO maintain sockets for reuse
 		// sockMap = new HashMap<String, Socket>();
-		// TODO read file...nodelist..rules, code in Config.java, replace this
-		// by Config.NODELIST
-		nodeList.put(localName, new NodeBean(localName, "192.168.145.1", port));
-		nodeList.put("alice", new NodeBean("alice", "192.168.145.137", 1234));
-
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {
@@ -116,6 +114,7 @@ public class MessagePasser implements MessagePasserApi {
 			return;
 		}
 		MessageAction action = checkSendAction(theRule);
+		System.out.println(action);
 		try {
 			Message dup = null;
 			switch (action) {
@@ -136,7 +135,8 @@ public class MessagePasser implements MessagePasserApi {
 				// now there should be two identical messages. Send all delayed first
 				while (!delayOutputQueue.isEmpty())
 					connectAndSend(delayOutputQueue.remove());
-				connectAndSend(dup);//TODO I didin't add the dup to queue.
+				if (dup != null)
+					connectAndSend(dup);//TODO I didin't add the dup to queue.
 				connectAndSend(outputQueue.remove());
 			}
 			System.err.println(message);
@@ -184,6 +184,7 @@ public class MessagePasser implements MessagePasserApi {
 				return null;
 			}
 			MessageAction action = checkReceiveAction(theRule);
+			System.out.println(action);
 			try {
 				Message dup = null;
 				switch (action) {
@@ -323,7 +324,7 @@ public class MessagePasser implements MessagePasserApi {
 						if (incoming != null) {
 							for (Message m : incoming) {
 								lastId.incrementAndGet();
-								System.out.println(m.getSrc() + ">"
+								System.out.println(m.getSrc() + "> "
 										+ m.getData());
 							}
 							System.err.println("msg left in queue: "

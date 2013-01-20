@@ -45,5 +45,9 @@ public class NodeBean implements Serializable {
 		this.port = port;
 	}
 	
+	@Override
+	public String toString() {
+		return name + " " + ip + " " + port;
+	}
 	
 }

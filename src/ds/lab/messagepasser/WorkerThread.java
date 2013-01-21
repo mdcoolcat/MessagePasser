@@ -4,6 +4,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.net.Socket;
+import java.util.HashMap;
 import java.util.concurrent.BlockingQueue;
 
 import ds.lab.message.Message;
@@ -23,7 +24,7 @@ public class WorkerThread implements Runnable {
 	private ObjectInputStream in;
 	private Socket connection;
 	private BlockingQueue<Message> inputQueue; // input queue
-	// private HashMap<String, Socket> sockMap;
+	private static HashMap<String, Socket> sockMap;
 
 	Object rcved = null;
 
@@ -31,10 +32,14 @@ public class WorkerThread implements Runnable {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
-		// this.sockMap = sockMap;
+		sockMap.put(connection.getInetAddress().getHostAddress(), connection);
 		new Thread(this).start();
 	}
 
+	public static HashMap<String, Socket> getSockMap()
+	{
+		return sockMap;
+	}
 	@Override
 	public void run() {
 		try {
@@ -62,16 +67,7 @@ public class WorkerThread implements Runnable {
 			}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
-		} finally {
-			// TODO remove this block if reuse socket
-			try {
-				in.close();
-				connection.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-
-		}
+		} 
 	}
 
 }

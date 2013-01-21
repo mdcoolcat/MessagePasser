@@ -2,6 +2,7 @@ package ds.lab.messagepasser;
 
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -136,6 +137,12 @@ public class MessagePasser implements MessagePasserApi {
 					connectAndSend(delayOutputQueue.remove());
 				if (dup != null)
 					connectAndSend(dup);//TODO I didin't add the dup to queue.
+				
+				/* The dup should be added to outputqueue by outputqueue.add(dup)
+				 * isn't it ??
+				 * */
+				
+				
 				connectAndSend(outputQueue.remove());
 			}
 			System.err.println(message);
@@ -243,22 +250,33 @@ public class MessagePasser implements MessagePasserApi {
 	private void connectAndSend(Message message) throws UnknownHostException,
 			IOException {
 		String dest = message.getDest();
-		// Socket sendSock = sockMap.get(dest);
-		// if (sendSock == null || sendSock.isClosed()) {
-		NodeBean n = nodeList.get(dest);
-		if (n == null)
-			throw new UnknownHostException("Message Send fails: unknown host "
-					+ dest);
-		Socket sendSock = new Socket(n.getIp(), n.getPort());
-		// synchronized (sockMap) {
-		// sockMap.put(dest, sendSock);
-		// }
-		// }
-		ObjectOutputStream out = new ObjectOutputStream(
+		Socket sendSock = WorkerThread.getSockMap().get(InetAddress.getByName(nodeList.get(message.getDest()).getIp()).getHostAddress());
+		 if (sendSock == null || sendSock.isClosed()) 
+		 {
+			 	NodeBean n = nodeList.get(dest);
+			 	if (n == null)
+			 		throw new UnknownHostException("Message Send fails: unknown host "
+			 				+ dest);
+			 	Socket sendSocket = new Socket(n.getIp(), n.getPort());
+			 	synchronized (WorkerThread.getSockMap()) {
+			 		WorkerThread.getSockMap().put(InetAddress.getByName(n.getIp()).getHostAddress(), sendSocket);
+			 	}
+			 	ObjectOutputStream out = new ObjectOutputStream(
+				sendSocket.getOutputStream());
+			 	out.writeObject(message);
+			 	out.flush();
+		}
+		 else{
+			 	NodeBean n = nodeList.get(dest);
+			 	if (n == null)
+			 		throw new UnknownHostException("Message Send fails: unknown host "
+			 				+ dest);
+			 	ObjectOutputStream out = new ObjectOutputStream(
 				sendSock.getOutputStream());
-		out.writeObject(message);
-		out.flush();
-		sendSock.close();// TODO remove if implement reuse
+			 	out.writeObject(message);
+			 	out.flush();
+			 }
+		
 	}
 
 	private class ListenThread implements Runnable {
@@ -276,6 +294,8 @@ public class MessagePasser implements MessagePasserApi {
 					// connection.setKeepAlive(true);
 					System.err.println("Listener> Received: "
 							+ connection.getInetAddress().toString());
+					
+				
 					// TODO pass sockMap to the thread to add socket...
 					new WorkerThread(connection, inputQueue);
 				}
@@ -314,8 +334,15 @@ public class MessagePasser implements MessagePasserApi {
 						System.err
 								.println("\nMessager> Input Message in 144 chars:");
 						String outMessage = sc.nextLine();
-						// TODO kind
-						sendMessage(dest, MessageKind.NONE, outMessage);
+						// TODO kind-----ACCOMPLISHED
+						System.out.println("\n Enter kind of the message: " +
+								"\n '0' for Lookup" +
+								"\n '1' for Ack" +
+								"\n '2' for None");
+						int kind = sc.nextInt();
+						MessageKind mk= Message.getMessageKind(kind);
+						
+						sendMessage(dest, mk , outMessage);
 
 					} else if (input.equals("1") || input.equals("receive")
 							|| input.equals("r")) {

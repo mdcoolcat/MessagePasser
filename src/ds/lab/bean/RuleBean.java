@@ -30,15 +30,15 @@ public class RuleBean {
 	 */
 	public boolean isMatch(Message m) {
 		assert action != null;
-		if (id == -1 && src == null && dest == null && kind == null)	//only contains action, it matches all msg
+		if (src == null && dest == null && (kind == null || kind == MessageKind.NONE) && id == -1)	//only contains action, it matches all msg
 			return true;
-		if (id != -1 && id != m.getId())
-			return false;
 		if (src != null && !src.equals(m.getSrc()))
 			return false;
 		if (dest != null && !dest.equals(m.getDest()))
 			return false;
 		if (kind != null && !kind.equals(m.getKind()))
+			return false;
+		if (id != -1 && id != m.getId())
 			return false;
 		return true;
 	}
@@ -117,7 +117,7 @@ public class RuleBean {
 
 	@Override
 	public String toString() {
-		return dest+" nth:"+nth+" everyN:"+everyNth;
+		return dest+" nth:"+nth+" everyN:"+everyNth+" "+action;
 	}
 
 }

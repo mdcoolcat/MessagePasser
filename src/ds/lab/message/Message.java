@@ -82,4 +82,16 @@ public class Message implements Serializable, Cloneable {
 			return "Message " + this.id + ", From " + this.src + " To " + this.dest + " kind: " + kind;
 		}
 	}
+
+
+	public static MessageKind getMessageKind(int k) {
+			MessageKind mk=null;
+			switch(k){
+			case 0: return MessageKind.LOOKUP;
+			case 1: return MessageKind.ACK;
+			case 2: return MessageKind.NONE;
+			default: return MessageKind.NONE;
+			}
+	}
+	
 }

@@ -138,8 +138,11 @@ public class MessagePasser implements MessagePasserApi {
 				outputQueue.add(message);
 				// now there should be two identical messages. Send all delayed
 				// first
-				while (!delayOutputQueue.isEmpty())
-					connectAndSend(delayOutputQueue.remove());
+				synchronized (delayOutputQueue) {
+					while (!delayOutputQueue.isEmpty())
+						connectAndSend(delayOutputQueue.remove());
+				}
+				
 				if (dup != null)
 					connectAndSend(dup);// TODO I didin't add the dup to queue.
 
@@ -215,8 +218,10 @@ public class MessagePasser implements MessagePasserApi {
 					// first deliver all delayed messages, then add the new
 					// one(s)
 					incoming = new ArrayList<Message>();
-					while (!delayInputQueue.isEmpty())
-						incoming.add(delayInputQueue.remove());
+					synchronized (delayInputQueue) {
+						while (!delayInputQueue.isEmpty())
+							incoming.add(delayInputQueue.remove());
+					}
 					incoming.add(message);
 					if (dup != null)
 						incoming.add(dup);

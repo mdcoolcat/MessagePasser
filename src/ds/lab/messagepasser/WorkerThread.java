@@ -4,7 +4,6 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.net.Socket;
-import java.util.HashMap;
 import java.util.concurrent.BlockingQueue;
 
 import ds.lab.message.Message;
@@ -24,7 +23,6 @@ public class WorkerThread implements Runnable {
 	private ObjectInputStream in;
 	private Socket connection;
 	private BlockingQueue<Message> inputQueue; // input queue
-	// private static HashMap<String, Socket> sockMap;
 	private String remoteName;
 
 	Object rcved = null;
@@ -37,10 +35,6 @@ public class WorkerThread implements Runnable {
 		new Thread(this).start();
 	}
 
-	// public static HashMap<String, Socket> getSockMap()
-	// {
-	// return sockMap;
-	// }
 	@Override
 	public void run() {
 		try {

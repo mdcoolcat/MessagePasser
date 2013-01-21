@@ -107,7 +107,6 @@ public class MessagePasser implements MessagePasserApi {
 		// TODO sync message id
 		message.setId(lastId.incrementAndGet());
 		RuleBean theRule = getMatchedSendRule(message);
-		System.err.println(theRule);
 		if (theRule == null) {
 			System.err.println("Messager> Error: no rule matches for current pair. Return");
 			return;
@@ -190,7 +189,9 @@ public class MessagePasser implements MessagePasserApi {
 				System.err.println("Messager> Error: no rule matches for current pair. Return");
 				return null;
 			}
-			MessageAction action = checkReceiveAction(theRule);
+			MessageAction action = theRule.getAction();
+			if (action != MessageAction.DEFAULT)
+				action = checkReceiveAction(theRule);
 			System.out.println(action);
 			try {
 				Message dup = null;
@@ -240,7 +241,7 @@ public class MessagePasser implements MessagePasserApi {
 	private MessageAction checkReceiveAction(RuleBean r) {
 		if (r.hasNoRestriction())// if no specify nth or everyNth, ignore action
 									// field..
-			return MessageAction.DEFAULT;
+			return r.getAction();
 		int now = rcvNthTracker.incrementAndGet(r.getActionIndex());// TODO
 																	// caution
 		if ((now == r.getNth()) || (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
@@ -284,7 +285,7 @@ public class MessagePasser implements MessagePasserApi {
 //					 connection.setKeepAlive(true);
 					assert connection.isConnected();
 					String remote = connection.getInetAddress().getHostAddress();
-					System.err.println("Listener> Received: " + remote);
+					System.err.println("Listener> " + remote + " has connectted you");
 
 					new WorkerThread(connection, inputQueue, ipNameMap.get(remote));
 				}
@@ -314,10 +315,11 @@ public class MessagePasser implements MessagePasserApi {
 	private class UserThread implements Runnable {
 		@Override
 		public void run() {
-			Scanner sc = new Scanner(System.in);
+			Scanner sc = null;
 			try {
 				while (true) {
 					System.err.println("Messager> Choose: 0. Send(S)\t1. Receive(R)");
+					sc = new Scanner(System.in);
 					String input = sc.nextLine().toLowerCase();
 					if (input.equals("0") || input.equals("send") || input.equals("s")) {
 						System.err.print("Messager> TO: ");
@@ -346,7 +348,6 @@ public class MessagePasser implements MessagePasserApi {
 								}
 								System.out.println(m.getSrc() + "> msg" + m.getId()+" "+m.getData());
 							}
-							System.out.println("lastId: "+lastId);
 						} else
 							System.err.println("Messager> no message");
 					} else {

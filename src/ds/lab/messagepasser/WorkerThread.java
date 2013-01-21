@@ -49,24 +49,19 @@ public class WorkerThread implements Runnable {
 				rcved = in.readObject();
 				// TODO data type swtich
 				Message tmp = (Message) rcved;
-				// synchronized (sockMap) {
-				// sockMap.put(tmp.getSrc(), connection);
-				// System.out.println("put sockmap: "+tmp.getSrc());
-				// }
 				if (tmp.getData() == null) {
-					System.err.println("Messager Worker> " + connection.getInetAddress().getHostAddress() + " went offile");
+					System.err.println("Messager> " + connection.getInetAddress().getHostAddress() + " went offile");
 				} else {
 					inputQueue.add(tmp);
 				}
 			}
 
 		} catch (EOFException e) {
-				System.err.println("Messager Worker> " + remoteName + " went offline");
 				try {
 					in.close();
 					throw new EOFException(remoteName);
 				} catch (IOException e1) {
-					e.printStackTrace();
+					e1.printStackTrace();
 				}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();

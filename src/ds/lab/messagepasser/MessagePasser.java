@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -131,7 +132,7 @@ public class MessagePasser implements MessagePasserApi {
 			case DUPLICATE:
 				sendNthTracker.incrementAndGet(1);
 				dup = message.clone();
-				dup.setId(lastId.incrementAndGet());
+				dup.setId(message.getId());
 			case DEFAULT:
 				message.setId(lastId.incrementAndGet());
 				outputQueue.add(message);
@@ -144,14 +145,16 @@ public class MessagePasser implements MessagePasserApi {
 
 				/*
 				 * The dup should be added to outputqueue by
-				 * outputqueue.add(dup) isn't it ??
+				 * outputqueue.add(dup) isn't it ?? ----this needs count for sending the 2 message. if another thread adds one msg between them, you don't know which two should send...my opinion
 				 */
 
 				connectAndSend(outputQueue.remove());
 			}
 			System.err.println(message);
 		} catch (UnknownHostException e) {
-			e.printStackTrace();
+			System.err.println("Messager> " + e.getMessage());
+		} catch (SocketException e) {
+			System.err.println("Message cannot be delivered: " + message.getDest() + " is offline");
 		} catch (IOException e) {
 			e.printStackTrace();
 		} catch (CloneNotSupportedException e) {
@@ -205,7 +208,7 @@ public class MessagePasser implements MessagePasserApi {
 				case DUPLICATE:
 					rcvNthTracker.incrementAndGet(1);
 					dup = message.clone();// add to list later
-					dup.setId(lastId.incrementAndGet());
+					dup.setId(dup.getId());
 					// inputQueue.add(dup);
 				case DEFAULT:
 					// now there should be two identical messages to deliver.
@@ -249,7 +252,7 @@ public class MessagePasser implements MessagePasserApi {
 		return MessageAction.DEFAULT;
 	}
 
-	private void connectAndSend(Message message) throws UnknownHostException, IOException {
+	private void connectAndSend(Message message) throws UnknownHostException, SocketException, IOException {
 		String dest = message.getDest();
 		// Socket sendSock =
 		// WorkerThread.getSockMap().get(InetAddress.getByName(nodeList.get(message.getDest()).getIp()).getHostAddress());
@@ -285,7 +288,7 @@ public class MessagePasser implements MessagePasserApi {
 					Socket connection = listenSocket.accept();
 //					 connection.setKeepAlive(true);
 					assert connection.isConnected();
-					String remote = connection.getInetAddress().getHostName();
+					String remote = connection.getInetAddress().getHostAddress();
 					System.err.println("Listener> Received: " + remote);
 
 					// TODO pass sockMap to the thread to add socket...
@@ -293,6 +296,7 @@ public class MessagePasser implements MessagePasserApi {
 				}
 			} catch (EOFException e) {//someone offline
 				String remote = e.getMessage();
+				System.err.println("Messager> " + remote + " went offline");
 				try {
 					outStreamMap.get(remote).close();
 					outStreamMap.remove(remote);

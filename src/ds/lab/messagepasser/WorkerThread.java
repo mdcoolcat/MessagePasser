@@ -14,7 +14,7 @@ import ds.lab.message.Message;
  * inputQueue. Be careful on synchronizing queue (should be fine since I use
  * blockingQueue).
  * <p>
- * TODO may add socket to sockMap for reuse. If we want to reuse sockets, no
+ * 
  * need to close them
  * 
  * @author dmei
@@ -25,15 +25,15 @@ public class WorkerThread implements Runnable {
 	private Socket connection;
 	private BlockingQueue<Message> inputQueue; // input queue
 	// private static HashMap<String, Socket> sockMap;
+	private String remoteName;
 
 	Object rcved = null;
 
-	public WorkerThread(Socket connection, BlockingQueue<Message> inputQueue) {
+	public WorkerThread(Socket connection, BlockingQueue<Message> inputQueue, String remoteName) {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
-		// sockMap.put(connection.getInetAddress().getHostAddress(),
-		// connection);
+		this.remoteName = remoteName;
 		new Thread(this).start();
 	}
 
@@ -54,19 +54,23 @@ public class WorkerThread implements Runnable {
 				// System.out.println("put sockmap: "+tmp.getSrc());
 				// }
 				if (tmp.getData() == null) {
-					System.err.println("worker>>>>" + connection.getInetAddress().getHostAddress() + " went offile");
+					System.err.println("Messager Worker> " + connection.getInetAddress().getHostAddress() + " went offile");
 				} else {
 					inputQueue.add(tmp);
 				}
 			}
 
-		} catch (IOException e) {
-			if (e instanceof EOFException) {
-				System.err.println("end...eof");
-			} else {
-				e.printStackTrace();
-			}
+		} catch (EOFException e) {
+				System.err.println("Messager Worker> " + remoteName + " went offline");
+				try {
+					in.close();
+					throw new EOFException(remoteName);
+				} catch (IOException e1) {
+					e.printStackTrace();
+				}
 		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}

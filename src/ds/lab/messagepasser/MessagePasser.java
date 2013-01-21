@@ -1,8 +1,8 @@
 package ds.lab.messagepasser;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -34,6 +34,7 @@ public class MessagePasser implements MessagePasserApi {
 	private BlockingQueue<Message> delayOutputQueue; // output queue
 	/** other local information */
 	private String localName;
+	private HashMap<String, String> ipNameMap;	//for reverse lookup by ip, <ip, name>
 	private AtomicIntegerArray sendNthTracker;
 	private AtomicIntegerArray rcvNthTracker;
 	private final int NUM_ACTION = 3;// DROP, DUPLICATE, DELAY
@@ -65,8 +66,11 @@ public class MessagePasser implements MessagePasserApi {
 			throw new IllegalArgumentException("Error local name");
 		}
 		this.localName = localName;
-		// this.incoming = new Message();// for initial use
-		this.lastId = new AtomicInteger(-1);
+		lastId = new AtomicInteger(-1);
+		ipNameMap = new HashMap<String, String>();
+		for (NodeBean n : nodeList.values())
+			ipNameMap.put(n.getIp(), n.getName());
+
 		/* queues and trackers */
 		inputQueue = new LinkedBlockingDeque<Message>();
 		outputQueue = new LinkedBlockingDeque<Message>();
@@ -75,6 +79,7 @@ public class MessagePasser implements MessagePasserApi {
 		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		/* listener */
+		outStreamMap = new HashMap<String, ObjectOutputStream>();
 		listenSocket = new ServerSocket(me.getPort());
 		ListenThread listener = new ListenThread();
 		// TODO for loop MAX_THREAD
@@ -259,6 +264,7 @@ public class MessagePasser implements MessagePasserApi {
 			// sendSocket);
 			// }
 			out = new ObjectOutputStream(sendSocket.getOutputStream());
+			outStreamMap.put(dest, out);
 		}
 		out.writeObject(message);
 		out.flush();
@@ -277,11 +283,21 @@ public class MessagePasser implements MessagePasserApi {
 			try {
 				while (true) {
 					Socket connection = listenSocket.accept();
-					// connection.setKeepAlive(true);
-					System.err.println("Listener> Received: " + connection.getInetAddress().toString());
+//					 connection.setKeepAlive(true);
+					assert connection.isConnected();
+					String remote = connection.getInetAddress().getHostName();
+					System.err.println("Listener> Received: " + remote);
 
 					// TODO pass sockMap to the thread to add socket...
-					new WorkerThread(connection, inputQueue);
+					new WorkerThread(connection, inputQueue, ipNameMap.get(remote));
+				}
+			} catch (EOFException e) {//someone offline
+				String remote = e.getMessage();
+				try {
+					outStreamMap.get(remote).close();
+					outStreamMap.remove(remote);
+				} catch (IOException e1) {
+					e.printStackTrace();
 				}
 			} catch (IOException e) {
 				e.printStackTrace();

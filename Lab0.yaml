@@ -28,8 +28,10 @@ SendRules :
     ID     : 4
   - Action : delay # Every Lookup message in the system will be delayed
     Kind   : Lookup
+  - Action : duplicate
 
 ReceiveRules :
   - Action : duplicate      # 3rd message from Charlie that anyone 
     Src    : charlie        # receives will be duplicated
     Nth    : 3
+  - Action : duplicate

@@ -12,9 +12,6 @@ import ds.lab.message.Message;
  * thread from listener thread, responsible for reading from socket and add to
  * inputQueue. Be careful on synchronizing queue (should be fine since I use
  * blockingQueue).
- * <p>
- * 
- * need to close them
  * 
  * @author dmei
  * 
@@ -51,12 +48,12 @@ public class WorkerThread implements Runnable {
 			}
 
 		} catch (EOFException e) {
-				try {
-					in.close();
-					throw new EOFException(remoteName);
-				} catch (IOException e1) {
-					e1.printStackTrace();
-				}
+			try {
+				in.close();
+				throw new EOFException(remoteName);
+			} catch (IOException e1) {
+				e1.printStackTrace();
+			}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		} catch (Exception e) {

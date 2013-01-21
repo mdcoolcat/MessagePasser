@@ -38,8 +38,9 @@ public class MessagePasser implements MessagePasserApi {
 	private HashMap<String, String> ipNameMap;	//for reverse lookup by ip, <ip, name>
 	private AtomicIntegerArray sendNthTracker;
 	private AtomicIntegerArray rcvNthTracker;
+	private AtomicInteger lastId;
 	private final int NUM_ACTION = 3;// DROP, DUPLICATE, DELAY
-	AtomicInteger lastId;
+	private Config config;
 
 	/**
 	 * Constructor read yaml formatted configure file, parse "configuration"
@@ -51,16 +52,9 @@ public class MessagePasser implements MessagePasserApi {
 	 * @throws IOException
 	 */
 	public MessagePasser(String configurationFile, String localName) throws IOException {
-		Config.parseConfigFile(configurationFile, localName);
+		config = new Config(configurationFile, localName);
 		MAX_THREAD = Config.NUM_NODE;
-		// nodeList = new HashMap<String, NodeBean>();// TODO Config.NODELIST
-		// nodeList.put(localName, new NodeBean(localName, "192.168.145.1",
-		// port));
-		// nodeList.put("alice", new NodeBean("alice", "192.168.145.138",
-		// 1234));
 		nodeList = Config.NODELIST;
-		// TODO maintain sockets for reuse
-		// sockMap = new HashMap<String, Socket>();
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {
@@ -111,13 +105,16 @@ public class MessagePasser implements MessagePasserApi {
 	@Override
 	public void send(Message message) {
 		// TODO sync message id
+		message.setId(lastId.incrementAndGet());
 		RuleBean theRule = getMatchedSendRule(message);
 		System.err.println(theRule);
 		if (theRule == null) {
 			System.err.println("Messager> Error: no rule matches for current pair. Return");
 			return;
 		}
-		MessageAction action = checkSendAction(theRule);
+		MessageAction action = theRule.getAction();
+		if (action != MessageAction.DEFAULT)
+			action = checkSendAction(theRule);
 		System.out.println(action);
 		try {
 			Message dup = null;
@@ -126,7 +123,7 @@ public class MessagePasser implements MessagePasserApi {
 				message = null;
 				break;
 			case DELAY:
-				message.setId(lastId.incrementAndGet());
+				
 				delayOutputQueue.add(message);// don't send
 				break;
 			case DUPLICATE:
@@ -134,26 +131,21 @@ public class MessagePasser implements MessagePasserApi {
 				dup = message.clone();
 				dup.setId(message.getId());
 			case DEFAULT:
-				message.setId(lastId.incrementAndGet());
 				outputQueue.add(message);
-				// now there should be two identical messages. Send all delayed
-				// first
+				// now there should be two identical messages. Send delayed after normal
+				/*
+				 * The dup should be added to outputqueue by
+				 * outputqueue.add(dup) isn't it ?? ----this needs count for sending the 2 message. if another thread adds one msg between them, you don't know which two should send...my opinion
+				 */
+				connectAndSend(outputQueue.remove());
+				if (dup != null)
+					connectAndSend(dup);
 				synchronized (delayOutputQueue) {
 					while (!delayOutputQueue.isEmpty())
 						connectAndSend(delayOutputQueue.remove());
 				}
 				
-				if (dup != null)
-					connectAndSend(dup);// TODO I didin't add the dup to queue.
-
-				/*
-				 * The dup should be added to outputqueue by
-				 * outputqueue.add(dup) isn't it ?? ----this needs count for sending the 2 message. if another thread adds one msg between them, you don't know which two should send...my opinion
-				 */
-
-				connectAndSend(outputQueue.remove());
 			}
-			System.err.println(message);
 		} catch (UnknownHostException e) {
 			System.err.println("Messager> " + e.getMessage());
 		} catch (SocketException e) {
@@ -166,7 +158,7 @@ public class MessagePasser implements MessagePasserApi {
 	}
 
 	private RuleBean getMatchedSendRule(Message message) {
-		ArrayList<RuleBean> rules = Config.SENDRULES;
+		ArrayList<RuleBean> rules = config.getSendRules();
 		RuleBean theRule = null;
 		for (RuleBean r : rules) {
 			if (r.isMatch(message)) {
@@ -180,7 +172,7 @@ public class MessagePasser implements MessagePasserApi {
 	private MessageAction checkSendAction(RuleBean r) {
 		if (r.hasNoRestriction())// if no specify nth or everyNth, ignore action
 									// field..
-			return MessageAction.DEFAULT;
+			return r.getAction();
 		int now = sendNthTracker.incrementAndGet(r.getActionIndex());// counter++
 		if ((now == r.getNth()) || (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
 			return r.getAction();
@@ -215,16 +207,15 @@ public class MessagePasser implements MessagePasserApi {
 					// inputQueue.add(dup);
 				case DEFAULT:
 					// now there should be two identical messages to deliver.
-					// first deliver all delayed messages, then add the new
-					// one(s)
+					// deliver delayed messages after the new one(s)
 					incoming = new ArrayList<Message>();
+					incoming.add(message);
+					if (dup != null)
+						incoming.add(dup);
 					synchronized (delayInputQueue) {
 						while (!delayInputQueue.isEmpty())
 							incoming.add(delayInputQueue.remove());
 					}
-					incoming.add(message);
-					if (dup != null)
-						incoming.add(dup);
 				}
 
 			} catch (CloneNotSupportedException e) {
@@ -235,7 +226,7 @@ public class MessagePasser implements MessagePasserApi {
 	}
 
 	private RuleBean getMatchedReceiveRule(Message message) {
-		ArrayList<RuleBean> rules = Config.RECEIVERULES;
+		ArrayList<RuleBean> rules = config.getRcvRules();
 		RuleBean theRule = null;
 		for (RuleBean r : rules) {
 			if (r.isMatch(message)) {
@@ -259,10 +250,8 @@ public class MessagePasser implements MessagePasserApi {
 
 	private void connectAndSend(Message message) throws UnknownHostException, SocketException, IOException {
 		String dest = message.getDest();
-		// Socket sendSock =
-		// WorkerThread.getSockMap().get(InetAddress.getByName(nodeList.get(message.getDest()).getIp()).getHostAddress());
 		ObjectOutputStream out = outStreamMap.get(dest);
-		if (out == null) {// no socket connection yet, create it
+		if (out == null) {// no socket connection yet, create it TODO if port change...
 			NodeBean n = nodeList.get(dest);
 			if (n == null)
 				throw new UnknownHostException("Message Send fails: unknown host " + dest);
@@ -276,6 +265,7 @@ public class MessagePasser implements MessagePasserApi {
 		}
 		out.writeObject(message);
 		out.flush();
+		System.err.println("sent>>>>>>>>>msg"+message.getId());
 
 	}
 
@@ -296,7 +286,6 @@ public class MessagePasser implements MessagePasserApi {
 					String remote = connection.getInetAddress().getHostAddress();
 					System.err.println("Listener> Received: " + remote);
 
-					// TODO pass sockMap to the thread to add socket...
 					new WorkerThread(connection, inputQueue, ipNameMap.get(remote));
 				}
 			} catch (EOFException e) {//someone offline
@@ -318,7 +307,7 @@ public class MessagePasser implements MessagePasserApi {
 
 	/**
 	 * Responsible for interating with user: send or receive
-	 * 
+	 *
 	 * @author dmei
 	 * 
 	 */
@@ -340,7 +329,6 @@ public class MessagePasser implements MessagePasserApi {
 						String dest = sc.nextLine().toLowerCase();
 						System.err.println("\nMessager> Input Message in 144 chars:");
 						String outMessage = sc.nextLine();
-						// TODO kind-----ACCOMPLISHED
 						System.out.println("\n Enter kind of the message: " + "\n '0' for Lookup" + "\n '1' for Ack"
 								+ "\n '2' for None");
 						int kind = sc.nextInt();
@@ -352,10 +340,13 @@ public class MessagePasser implements MessagePasserApi {
 						ArrayList<Message> incoming = receive();
 						if (incoming != null) {
 							for (Message m : incoming) {
-								lastId.incrementAndGet();
-								System.out.println(m.getSrc() + "> " + m.getData());
+								synchronized (lastId) {
+									if (lastId.get() < m.getId())
+										lastId.set(m.getId());
+								}
+								System.out.println(m.getSrc() + "> msg" + m.getId()+" "+m.getData());
 							}
-							System.err.println("msg left in queue: " + inputQueue.size());
+							System.out.println("lastId: "+lastId);
 						} else
 							System.err.println("Messager> no message");
 					} else {

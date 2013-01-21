@@ -31,7 +31,7 @@ public class Config {
 		RECEIVERULES = new ArrayList<RuleBean>();
 		InputStream input;
 		try {
-			input = new FileInputStream(new File("Lab0.yaml"));
+			input = new FileInputStream(new File(configurationFile));
 			DumperOptions options = new DumperOptions();
 			 options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
 			 Yaml yaml = new Yaml(options);

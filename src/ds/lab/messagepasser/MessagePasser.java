@@ -21,7 +21,6 @@ import ds.lab.message.MessageAction;
 import ds.lab.message.MessageKind;
 
 public class MessagePasser implements MessagePasserApi {
-	private int port = 6781;
 	/** multithreading, node management */
 	private int MAX_THREAD;
 	private ServerSocket listenSocket;
@@ -91,13 +90,13 @@ public class MessagePasser implements MessagePasserApi {
 	 *            local name of this node
 	 */
 	public static void main(String argv[]) {
-		if (argv.length < 1) {
-			System.out.println("Usage: ...");
+		if (argv.length < 2) {
+			System.out.println("Usage: configFile localName");
 			System.exit(0);
 		}
 
 		try {
-			new MessagePasser("", argv[0].toLowerCase());
+			new MessagePasser(argv[0], argv[1].toLowerCase());
 
 		} catch (IOException e) {
 			e.printStackTrace();

@@ -26,17 +26,14 @@ public class MessagePasser implements MessagePasserApi {
 	private int MAX_THREAD;
 	private ServerSocket listenSocket;
 	private HashMap<String, NodeBean> nodeList;// name-user
-	// private HashMap<String, Socket> sockMap;// name-socket
+	private HashMap<String, ObjectOutputStream> outStreamMap;// name-socket
 	/** message */
 	private BlockingQueue<Message> inputQueue; // input queue
 	private BlockingQueue<Message> outputQueue; // output queue
 	private BlockingQueue<Message> delayInputQueue; // input queue
 	private BlockingQueue<Message> delayOutputQueue; // output queue
-	// private Message incoming;
 	/** other local information */
 	private String localName;
-	// private int lastId = -1;// TODO
-	// private int[] nthTracker;
 	private AtomicIntegerArray sendNthTracker;
 	private AtomicIntegerArray rcvNthTracker;
 	private final int NUM_ACTION = 3;// DROP, DUPLICATE, DELAY
@@ -51,13 +48,14 @@ public class MessagePasser implements MessagePasserApi {
 	 *            global unique name to identify this node
 	 * @throws IOException
 	 */
-	public MessagePasser(String configurationFile, String localName)
-			throws IOException {
+	public MessagePasser(String configurationFile, String localName) throws IOException {
 		Config.parseConfigFile(configurationFile, localName);
 		MAX_THREAD = Config.NUM_NODE;
-//		nodeList = new HashMap<String, NodeBean>();// TODO Config.NODELIST
-//		nodeList.put(localName, new NodeBean(localName, "192.168.145.1", port));
-//		nodeList.put("alice", new NodeBean("alice", "192.168.145.138", 1234));
+		// nodeList = new HashMap<String, NodeBean>();// TODO Config.NODELIST
+		// nodeList.put(localName, new NodeBean(localName, "192.168.145.1",
+		// port));
+		// nodeList.put("alice", new NodeBean("alice", "192.168.145.138",
+		// 1234));
 		nodeList = Config.NODELIST;
 		// TODO maintain sockets for reuse
 		// sockMap = new HashMap<String, Socket>();
@@ -132,17 +130,18 @@ public class MessagePasser implements MessagePasserApi {
 			case DEFAULT:
 				message.setId(lastId.incrementAndGet());
 				outputQueue.add(message);
-				// now there should be two identical messages. Send all delayed first
+				// now there should be two identical messages. Send all delayed
+				// first
 				while (!delayOutputQueue.isEmpty())
 					connectAndSend(delayOutputQueue.remove());
 				if (dup != null)
-					connectAndSend(dup);//TODO I didin't add the dup to queue.
-				
-				/* The dup should be added to outputqueue by outputqueue.add(dup)
-				 * isn't it ??
-				 * */
-				
-				
+					connectAndSend(dup);// TODO I didin't add the dup to queue.
+
+				/*
+				 * The dup should be added to outputqueue by
+				 * outputqueue.add(dup) isn't it ??
+				 */
+
 				connectAndSend(outputQueue.remove());
 			}
 			System.err.println(message);
@@ -172,8 +171,7 @@ public class MessagePasser implements MessagePasserApi {
 									// field..
 			return MessageAction.DEFAULT;
 		int now = sendNthTracker.incrementAndGet(r.getActionIndex());// counter++
-		if ((now == r.getNth())
-				|| (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
+		if ((now == r.getNth()) || (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
 			return r.getAction();
 		return MessageAction.DEFAULT;
 	}
@@ -241,42 +239,30 @@ public class MessagePasser implements MessagePasserApi {
 			return MessageAction.DEFAULT;
 		int now = rcvNthTracker.incrementAndGet(r.getActionIndex());// TODO
 																	// caution
-		if ((now == r.getNth())
-				|| (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
+		if ((now == r.getNth()) || (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
 			return r.getAction();
 		return MessageAction.DEFAULT;
 	}
 
-	private void connectAndSend(Message message) throws UnknownHostException,
-			IOException {
+	private void connectAndSend(Message message) throws UnknownHostException, IOException {
 		String dest = message.getDest();
-		Socket sendSock = WorkerThread.getSockMap().get(InetAddress.getByName(nodeList.get(message.getDest()).getIp()).getHostAddress());
-		 if (sendSock == null || sendSock.isClosed()) 
-		 {
-			 	NodeBean n = nodeList.get(dest);
-			 	if (n == null)
-			 		throw new UnknownHostException("Message Send fails: unknown host "
-			 				+ dest);
-			 	Socket sendSocket = new Socket(n.getIp(), n.getPort());
-			 	synchronized (WorkerThread.getSockMap()) {
-			 		WorkerThread.getSockMap().put(InetAddress.getByName(n.getIp()).getHostAddress(), sendSocket);
-			 	}
-			 	ObjectOutputStream out = new ObjectOutputStream(
-				sendSocket.getOutputStream());
-			 	out.writeObject(message);
-			 	out.flush();
+		// Socket sendSock =
+		// WorkerThread.getSockMap().get(InetAddress.getByName(nodeList.get(message.getDest()).getIp()).getHostAddress());
+		ObjectOutputStream out = outStreamMap.get(dest);
+		if (out == null) {// no socket connection yet, create it
+			NodeBean n = nodeList.get(dest);
+			if (n == null)
+				throw new UnknownHostException("Message Send fails: unknown host " + dest);
+			Socket sendSocket = new Socket(n.getIp(), n.getPort());
+			// synchronized (WorkerThread.getSockMap()) {
+			// WorkerThread.getSockMap().put(InetAddress.getByName(n.getIp()).getHostAddress(),
+			// sendSocket);
+			// }
+			out = new ObjectOutputStream(sendSocket.getOutputStream());
 		}
-		 else{
-			 	NodeBean n = nodeList.get(dest);
-			 	if (n == null)
-			 		throw new UnknownHostException("Message Send fails: unknown host "
-			 				+ dest);
-			 	ObjectOutputStream out = new ObjectOutputStream(
-				sendSock.getOutputStream());
-			 	out.writeObject(message);
-			 	out.flush();
-			 }
-		
+		out.writeObject(message);
+		out.flush();
+
 	}
 
 	private class ListenThread implements Runnable {
@@ -292,10 +278,8 @@ public class MessagePasser implements MessagePasserApi {
 				while (true) {
 					Socket connection = listenSocket.accept();
 					// connection.setKeepAlive(true);
-					System.err.println("Listener> Received: "
-							+ connection.getInetAddress().toString());
-					
-				
+					System.err.println("Listener> Received: " + connection.getInetAddress().toString());
+
 					// TODO pass sockMap to the thread to add socket...
 					new WorkerThread(connection, inputQueue);
 				}
@@ -319,11 +303,9 @@ public class MessagePasser implements MessagePasserApi {
 			Scanner sc = new Scanner(System.in);
 			try {
 				while (true) {
-					System.err
-							.println("Messager> Choose: 0. Send(S)\t1. Receive(R)");
+					System.err.println("Messager> Choose: 0. Send(S)\t1. Receive(R)");
 					String input = sc.nextLine().toLowerCase();
-					if (input.equals("0") || input.equals("send")
-							|| input.equals("s")) {
+					if (input.equals("0") || input.equals("send") || input.equals("s")) {
 						System.err.print("Messager> TO: ");
 						for (String name : nodeList.keySet()) {
 							if (name.equals(localName))// skip self
@@ -331,30 +313,24 @@ public class MessagePasser implements MessagePasserApi {
 							System.err.print(name + "\t");
 						}
 						String dest = sc.nextLine().toLowerCase();
-						System.err
-								.println("\nMessager> Input Message in 144 chars:");
+						System.err.println("\nMessager> Input Message in 144 chars:");
 						String outMessage = sc.nextLine();
 						// TODO kind-----ACCOMPLISHED
-						System.out.println("\n Enter kind of the message: " +
-								"\n '0' for Lookup" +
-								"\n '1' for Ack" +
-								"\n '2' for None");
+						System.out.println("\n Enter kind of the message: " + "\n '0' for Lookup" + "\n '1' for Ack"
+								+ "\n '2' for None");
 						int kind = sc.nextInt();
-						MessageKind mk= Message.getMessageKind(kind);
-						
-						sendMessage(dest, mk , outMessage);
+						MessageKind mk = Message.getMessageKind(kind);
 
-					} else if (input.equals("1") || input.equals("receive")
-							|| input.equals("r")) {
+						sendMessage(dest, mk, outMessage);
+
+					} else if (input.equals("1") || input.equals("receive") || input.equals("r")) {
 						ArrayList<Message> incoming = receive();
 						if (incoming != null) {
 							for (Message m : incoming) {
 								lastId.incrementAndGet();
-								System.out.println(m.getSrc() + "> "
-										+ m.getData());
+								System.out.println(m.getSrc() + "> " + m.getData());
 							}
-							System.err.println("msg left in queue: "
-									+ inputQueue.size());
+							System.err.println("msg left in queue: " + inputQueue.size());
 						} else
 							System.err.println("Messager> no message");
 					} else {

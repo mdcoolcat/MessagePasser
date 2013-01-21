@@ -24,7 +24,7 @@ public class WorkerThread implements Runnable {
 	private ObjectInputStream in;
 	private Socket connection;
 	private BlockingQueue<Message> inputQueue; // input queue
-	private static HashMap<String, Socket> sockMap;
+	// private static HashMap<String, Socket> sockMap;
 
 	Object rcved = null;
 
@@ -32,31 +32,32 @@ public class WorkerThread implements Runnable {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
-		sockMap.put(connection.getInetAddress().getHostAddress(), connection);
+		// sockMap.put(connection.getInetAddress().getHostAddress(),
+		// connection);
 		new Thread(this).start();
 	}
 
-	public static HashMap<String, Socket> getSockMap()
-	{
-		return sockMap;
-	}
+	// public static HashMap<String, Socket> getSockMap()
+	// {
+	// return sockMap;
+	// }
 	@Override
 	public void run() {
 		try {
-			// input, output
 			in = new ObjectInputStream(connection.getInputStream());
-			rcved = in.readObject();
-			// TODO data type swtich
-			Message tmp = (Message) rcved;
-			// synchronized (sockMap) {
-			// sockMap.put(tmp.getSrc(), connection);
-			// System.out.println("put sockmap: "+tmp.getSrc());
-			// }
-			if (tmp.getData() == null) {
-				System.err.println("worker>>>>" + connection.getInetAddress().getHostAddress()
-						+ " went offile");
-			} else {
-				inputQueue.add(tmp);
+			while (true) {
+				rcved = in.readObject();
+				// TODO data type swtich
+				Message tmp = (Message) rcved;
+				// synchronized (sockMap) {
+				// sockMap.put(tmp.getSrc(), connection);
+				// System.out.println("put sockmap: "+tmp.getSrc());
+				// }
+				if (tmp.getData() == null) {
+					System.err.println("worker>>>>" + connection.getInetAddress().getHostAddress() + " went offile");
+				} else {
+					inputQueue.add(tmp);
+				}
 			}
 
 		} catch (IOException e) {
@@ -67,7 +68,7 @@ public class WorkerThread implements Runnable {
 			}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
-		} 
+		}
 	}
 
 }

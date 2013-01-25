@@ -107,13 +107,15 @@ public class MessagePasser implements MessagePasserApi {
 		// TODO sync message id
 		message.setId(lastId.incrementAndGet());
 		RuleBean theRule = getMatchedSendRule(message);
+		MessageAction action;
 		if (theRule == null) {
-			System.err.println("Messager> Error: no rule matches for current pair. Return");
-			return;
+			System.err.println("Messager> no rule matches for current pair.");
+			action = MessageAction.DEFAULT;
+		} else {
+			action = theRule.getAction();
+			if (action != MessageAction.DEFAULT)
+				action = checkSendAction(theRule);
 		}
-		MessageAction action = theRule.getAction();
-		if (action != MessageAction.DEFAULT)
-			action = checkSendAction(theRule);
 		System.out.println(action);
 		try {
 			Message dup = null;
@@ -185,13 +187,15 @@ public class MessagePasser implements MessagePasserApi {
 			Message message = inputQueue.remove();// examine the 1st one
 			RuleBean theRule = getMatchedReceiveRule(message);
 			System.err.println(theRule);
+			MessageAction action;
 			if (theRule == null) {
-				System.err.println("Messager> Error: no rule matches for current pair. Return");
-				return null;
+				System.err.println("Messager> no rule matches for current pair.");
+				action = MessageAction.DEFAULT;
+			} else {
+				action = theRule.getAction();
+				if (action != MessageAction.DEFAULT)
+					action = checkReceiveAction(theRule);
 			}
-			MessageAction action = theRule.getAction();
-			if (action != MessageAction.DEFAULT)
-				action = checkReceiveAction(theRule);
 			System.out.println(action);
 			try {
 				Message dup = null;

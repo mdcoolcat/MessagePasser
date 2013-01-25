@@ -7,34 +7,23 @@
 # The local node's name is included in this list
 Configuration :
   - Name : alice 
-    IP   : 192.168.145.139
+    IP   : 128.237.115.24
     Port : 12344        # This is the incoming port on which MP will listen
                         # May be changed for further communication as usual
   - Name : bob 
-    IP   : 192.168.145.1
+    IP   : 128.237.115.24
     Port : 14255
   - Name : charlie
-    IP   : 128.2.130.19
+    IP   : 128.237.131.36
     Port : 12998
   - Name : daphnie
-    IP   : 192.168.1.87
+    IP   : 128.237.131.36
     Port : 1987
 
 SendRules :
   - Action : duplicate # Ack message number 4 from bob to alice will not be sent
-    Src    : bob
-    Dest   : alice
-    Kind   : Ack
-    ID     : 2
-  - Action : delay # Every Lookup message in the system will be delayed
-    Src    : alice
-    Dest   : bob
-    Kind   : Ack
-    ID     : 4
-  - Action : delay #default
+    Src    : charlie
+    ID: 1
 
 ReceiveRules :
-  - Action : duplicate      # 3rd message from Charlie that anyone 
-    Src    : charlie        # receives will be duplicated
-    Nth    : 3
-  - Action : duplicate #default
+  - Action : delay

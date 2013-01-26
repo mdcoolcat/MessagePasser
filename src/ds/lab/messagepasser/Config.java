@@ -16,38 +16,44 @@ import org.yaml.snakeyaml.Yaml;
 import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
 import ds.lab.message.MessageAction;
-import ds.lab.message.MessageKind;
 
 public class Config {
-	public static HashMap<String, NodeBean> NODELIST;// assume remain unchange. TODO port change..
+	public  HashMap<String, NodeBean> NODELIST;// assume remain unchange. TODO port change..
 	public ArrayList<RuleBean> sendRules;// may change
 	public ArrayList<RuleBean> rcvRules;// may change
 
-	public static int NUM_NODE = 4;// TODO get from configfile
+	public int NUM_NODE;// TODO get from configfile
 	private String configurationFile;
 	private String localName;
 
 	public Config(String configurationFile, String localName) {
 		this.configurationFile = configurationFile;
 		this.localName = localName;
-		NODELIST = new HashMap<String, NodeBean>();
-		parseConfigFile();
+		
+		this.parseConfigFile(this.configurationFile,this.localName);
 	}
 	
 	public ArrayList<RuleBean> getSendRules() {
-		parseConfigFile();
+		parseagain(this.configurationFile,this.localName);
 		return sendRules;
 	}
 
 
 	public ArrayList<RuleBean> getRcvRules() {
-		parseConfigFile();
+		parseagain(this.configurationFile,this.localName);
 		return rcvRules;
 	}
+	private void parseagain(String configurationFile, String localName)
+	{
+		this.configurationFile=configurationFile;		//overwriting configfilename
+		this.localName=localName;						//overwriting localname
+	    parseConfigFile(this.configurationFile,this.localName);	
+	}
 
-	private void parseConfigFile() {
+	private void parseConfigFile(String configurationFile, String localName) {
 		sendRules = new ArrayList<RuleBean>();
 		rcvRules = new ArrayList<RuleBean>();
+		NODELIST = new HashMap<String, NodeBean>();
 		FileInputStream input = null;
 		try {
 			input = new FileInputStream(new File(configurationFile));
@@ -75,6 +81,7 @@ public class Config {
 						}
 						NODELIST.put(nb.getName(), nb);
 					}
+					NUM_NODE=NODELIST.size();
 				}
 
 				if (keytype == 1) {
@@ -97,15 +104,22 @@ public class Config {
 							if (innerdetails.getKey().equalsIgnoreCase("Dest"))
 								rb.setDest(innerdetails.getValue().toString());
 							if (innerdetails.getKey().equalsIgnoreCase("Kind")) {
-								if (innerdetails.getValue().toString().equalsIgnoreCase("Lookup"))
-									rb.setKind(MessageKind.LOOKUP);
-								if (innerdetails.getValue().toString().equalsIgnoreCase("Ack"))
-									rb.setKind(MessageKind.ACK);
-								if (innerdetails.getValue().toString().equalsIgnoreCase("None"))
-									rb.setKind(MessageKind.NONE);
+								rb.setKind(innerdetails.getValue().toString());
+//								if (innerdetails.getValue().toString().equalsIgnoreCase("Lookup"))
+//									rb.setKind(MessageKind.LOOKUP);
+//								if (innerdetails.getValue().toString().equalsIgnoreCase("Ack"))
+//									rb.setKind(MessageKind.ACK);
+//								if (innerdetails.getValue().toString().equalsIgnoreCase("None"))
+//									rb.setKind(MessageKind.NONE);
 							}
 							if (innerdetails.getKey().equalsIgnoreCase("ID"))
 								rb.setId(Integer.parseInt(innerdetails.getValue().toString()));
+							if (innerdetails.getKey().equalsIgnoreCase("Nth"))
+								rb.setNth(Integer.parseInt(innerdetails.getValue().toString()));
+
+							if (innerdetails.getKey().equalsIgnoreCase("EveryNth"))
+								rb.setEveryNth(Integer.parseInt(innerdetails.getValue().toString()));
+
 						}
 						sendRules.add(rb);
 					}
@@ -128,8 +142,19 @@ public class Config {
 
 							if (innerdetails.getKey().equalsIgnoreCase("Src"))
 								rb.setSrc(innerdetails.getValue().toString());
+							if (innerdetails.getKey().equalsIgnoreCase("Dest"))
+								rb.setDest(innerdetails.getValue().toString());
+							if (innerdetails.getKey().equalsIgnoreCase("Kind"))
+								rb.setKind(innerdetails.getValue().toString());
+														
 							if (innerdetails.getKey().equalsIgnoreCase("Nth"))
 								rb.setNth(Integer.parseInt(innerdetails.getValue().toString()));
+
+							if (innerdetails.getKey().equalsIgnoreCase("EveryNth"))
+								rb.setEveryNth(Integer.parseInt(innerdetails.getValue().toString()));
+
+							if (innerdetails.getKey().equalsIgnoreCase("ID"))
+								rb.setId(Integer.parseInt(innerdetails.getValue().toString()));
 						}
 
 						rcvRules.add(rb);

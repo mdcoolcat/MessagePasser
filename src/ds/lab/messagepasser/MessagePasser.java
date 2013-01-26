@@ -20,7 +20,6 @@ import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
 import ds.lab.message.Message;
 import ds.lab.message.MessageAction;
-import ds.lab.message.MessageKind;
 
 public class MessagePasser implements MessagePasserApi {
 	/** multithreading, node management */
@@ -35,6 +34,7 @@ public class MessagePasser implements MessagePasserApi {
 	private BlockingQueue<Message> delayOutputQueue; // output queue
 	/** other local information */
 	private String localName;
+	private String configFileName;
 	private HashMap<String, String> ipNameMap;	//for reverse lookup by ip, <ip, name>
 	private AtomicIntegerArray sendNthTracker;
 	private AtomicIntegerArray rcvNthTracker;
@@ -53,14 +53,15 @@ public class MessagePasser implements MessagePasserApi {
 	 */
 	public MessagePasser(String configurationFile, String localName) throws IOException {
 		config = new Config(configurationFile, localName);
-		MAX_THREAD = Config.NUM_NODE;
-		nodeList = Config.NODELIST;
+		MAX_THREAD = config.NUM_NODE;
+		nodeList =config.NODELIST;
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {
 			throw new IllegalArgumentException("Error local name");
 		}
 		this.localName = localName;
+		this.configFileName=configurationFile;
 		lastId = new AtomicInteger(-1);
 		ipNameMap = new HashMap<String, String>();
 		for (NodeBean n : nodeList.values())
@@ -101,6 +102,7 @@ public class MessagePasser implements MessagePasserApi {
 			e.printStackTrace();
 		}
 	}
+	
 
 	@Override
 	public void send(Message message) {
@@ -273,6 +275,15 @@ public class MessagePasser implements MessagePasserApi {
 		System.err.println("sent>>>>>>>>>msg"+message.getId());
 
 	}
+	
+	private String getLocalName()
+	{
+		return localName;
+	}
+	private String getConfigFileName()
+	{
+		return configFileName;
+	}
 
 	private class ListenThread implements Runnable {
 		@Override
@@ -326,6 +337,8 @@ public class MessagePasser implements MessagePasserApi {
 					sc = new Scanner(System.in);
 					String input = sc.nextLine().toLowerCase();
 					if (input.equals("0") || input.equals("send") || input.equals("s")) {
+						//callToParseAgain(getLocalName(),getConfigFileName());   ....this is already called in the 
+						                         //getsendrules and getreceiverules functions, so no need to call again from here
 						System.err.print("Messager> TO: ");
 						for (String name : nodeList.keySet()) {
 							if (name.equals(localName))// skip self
@@ -333,13 +346,10 @@ public class MessagePasser implements MessagePasserApi {
 							System.err.print(name + "\t");
 						}
 						String dest = sc.nextLine().toLowerCase();
+						System.out.println("\nMessager> Enter kind of the message:");
+						String mk = sc.nextLine();
 						System.err.println("\nMessager> Input Message in 144 chars:");
 						String outMessage = sc.nextLine();
-						System.out.println("\n Enter kind of the message: " + "\n '0' for Lookup" + "\n '1' for Ack"
-								+ "\n '2' for None");
-						int kind = sc.nextInt();
-						MessageKind mk = Message.getMessageKind(kind);
-
 						sendMessage(dest, mk, outMessage);
 
 					} else if (input.equals("1") || input.equals("receive") || input.equals("r")) {
@@ -365,8 +375,8 @@ public class MessagePasser implements MessagePasserApi {
 			}
 		}
 
-		private void sendMessage(String dest, MessageKind kind, Object data) {
-			send(new Message(localName, dest, kind, data));
+		private void sendMessage(String dest, String kind, Object data) {
+			send(new Message(localName, dest, kind.toLowerCase(), data));
 		}
 	}
 }

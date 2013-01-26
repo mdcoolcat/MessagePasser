@@ -2,7 +2,6 @@ package ds.lab.bean;
 
 import ds.lab.message.Message;
 import ds.lab.message.MessageAction;
-import ds.lab.message.MessageKind;
 
 public class RuleBean {
 	/** must have */
@@ -10,7 +9,8 @@ public class RuleBean {
 	/** optional,used for rule check */
 	private String src;
 	private String dest;
-	private MessageKind kind;
+	private String kind;
+
 	private int id = -1;
 	/** optional */
 	private int nth = -1;
@@ -30,7 +30,7 @@ public class RuleBean {
 	 */
 	public boolean isMatch(Message m) {
 		assert action != null;
-		if (src == null && dest == null && (kind == null || kind == MessageKind.NONE) && id == -1)	//only contains action, it matches all msg
+		if (src == null && dest == null && kind == null && id == -1)	//only contains action, it matches all msg
 			return true;
 		if (src != null && !src.equals(m.getSrc()))
 			return false;
@@ -66,6 +66,14 @@ public class RuleBean {
 		this.action = action;
 	}
 
+	public String getKind() {
+		return kind;
+	}
+
+	public void setKind(String kind) {
+		this.kind = kind;
+	}
+	
 	public String getSrc() {
 		return src;
 	}
@@ -82,14 +90,6 @@ public class RuleBean {
 		this.dest = dest;
 	}
 
-	public MessageKind getKind() {
-		return kind;
-	}
-
-	//TODO change to string if parse is difficult for this type
-	public void setKind(MessageKind kind) {
-		this.kind = kind;
-	}
 
 	public int getId() {
 		return id;

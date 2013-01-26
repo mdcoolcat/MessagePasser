@@ -14,10 +14,10 @@ public class Message implements Serializable, Cloneable {
 	private Object data = null;	
 	
 	public Message() {
-		this.header = new Header("", "", MessageKind.NONE);
+		this.header = new Header("", "", null);
 		setId(-1);//for initial use
 	}
-	public Message(String src, String dest, MessageKind kind, Object data) {
+	public Message(String src, String dest, String kind, Object data) {
 		assert src != null;
 		assert dest != null;
 		//TODO assert kind != null;
@@ -39,7 +39,7 @@ public class Message implements Serializable, Cloneable {
 	public String getSrc() {
 		return header.src;
 	}
-	public MessageKind getKind() {
+	public String getKind() {
 		return header.kind;
 	}
 	public Object getData() {
@@ -69,9 +69,9 @@ public class Message implements Serializable, Cloneable {
 		int id;
 		String src;
 		String dest;
-		MessageKind kind;
+		String kind;
 		
-		public Header(String src, String dest, MessageKind kind) {
+		public Header(String src, String dest, String kind) {
 			this.src = src;
 			this.dest = dest;
 			this.kind = kind;
@@ -84,14 +84,22 @@ public class Message implements Serializable, Cloneable {
 	}
 
 
-	public static MessageKind getMessageKind(int k) {
-			MessageKind mk=null;
-			switch(k){
-			case 0: return MessageKind.LOOKUP;
-			case 1: return MessageKind.ACK;
-			case 2: return MessageKind.NONE;
-			default: return MessageKind.NONE;
-			}
-	}
+//	public static MessageKind getMessageKind(int k) {
+//			MessageKind mk=null;
+//			switch(k){
+//			case 0: return MessageKind.LOOKUP;
+//			case 1: return MessageKind.ACK;
+//			case 2: return MessageKind.NONE;
+//			default: return MessageKind.NONE;
+//			}
+//	}
+//	public static int getMessageKindIndex(String str) {
+//		switch(str.toLowerCase()){
+//		case "lookup": return 0;
+//		case "ack": return 1;
+//		case "none": return 2;
+//		default: return 2;
+//		}
+//}
 	
 }

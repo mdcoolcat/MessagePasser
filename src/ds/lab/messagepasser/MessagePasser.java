@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
 import ds.lab.bean.TimeStamp;
+import ds.lab.log.LoggerFacility;
 import ds.lab.message.TimeStampMessage;
 import ds.lab.message.MessageAction;
 
@@ -45,7 +46,7 @@ public class MessagePasser implements MessagePasserApi {
 	
 	/** clock and logger */
 	private ClockService clock;
-	//TODO logger
+	private LoggerFacility logger;
 
 	/**
 	 * Constructor read yaml formatted configure file, parse "configuration"
@@ -61,8 +62,14 @@ public class MessagePasser implements MessagePasserApi {
 		MAX_THREAD = config.NUM_NODE;
 		//TODO create ClockService instance
 		clock = ClockService.getClock(0, MAX_THREAD);
-		//TODO create logger
 		nodeList =config.NODELIST;
+		/* logger */
+		NodeBean lg = nodeList.get("logger");
+		if (lg == null)
+			throw new IllegalArgumentException("Logger not found");
+		logger = new LoggerFacility(lg.getName(), lg.getIp(), lg.getPort());
+		nodeList.remove("logger");//TODO is it necessary?
+
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {

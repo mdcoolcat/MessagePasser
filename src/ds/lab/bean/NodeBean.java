@@ -18,10 +18,14 @@ public class NodeBean implements Serializable {
 		
 	}
 	
-	public NodeBean(String name, String ip, int port) throws UnknownHostException {
+	public NodeBean(String name, String ip, int port) {
 		this.name = name;
 		this.ip = ip;
-		this.inetAddr = InetAddress.getByName(ip);
+		try {
+			this.inetAddr = InetAddress.getByName(ip);
+		} catch (UnknownHostException e) {
+			e.printStackTrace();
+		}
 		this.port = port;
 	}
 	

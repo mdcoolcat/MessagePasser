@@ -10,7 +10,7 @@ Configuration :
     IP   : 128.237.115.24
     Port : 12344        # This is the incoming port on which MP will listen
                         # May be changed for further communication as usual
-  - Name : bob 
+  - Name : logger
     IP   : 128.237.115.24
     Port : 14255
   - Name : charlie
@@ -26,4 +26,3 @@ SendRules :
     ID: 1
 
 ReceiveRules :
-  - Action : delay

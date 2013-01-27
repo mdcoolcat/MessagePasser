@@ -65,6 +65,7 @@ public class Config {
 			Map<String, ArrayList<Map<String, Object>>> obj = (Map<String, ArrayList<Map<String, Object>>>) yaml
 					.load(input);
 			for (Map.Entry<String, ArrayList<Map<String, Object>>> entry : obj.entrySet()) {
+				try {
 				if (keytype == 0) // for configuration
 				{
 					Iterator i = entry.getValue().iterator();
@@ -162,6 +163,10 @@ public class Config {
 				}
 
 				keytype++;
+				} catch (NullPointerException e) {
+					System.err.println("Config> No rule");
+					continue;
+				}
 			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();

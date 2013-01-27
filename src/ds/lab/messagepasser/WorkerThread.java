@@ -6,6 +6,7 @@ import java.io.ObjectInputStream;
 import java.net.Socket;
 import java.util.concurrent.BlockingQueue;
 
+import ds.lab.bean.TimeStamp;
 import ds.lab.message.Message;
 
 /**
@@ -21,13 +22,15 @@ public class WorkerThread implements Runnable {
 	private Socket connection;
 	private BlockingQueue<Message> inputQueue; // input queue
 	private String remoteName;
+	private ClockService clock;
 
 	Object rcved = null;
 
-	public WorkerThread(Socket connection, BlockingQueue<Message> inputQueue, String remoteName) {
+	public WorkerThread(Socket connection, BlockingQueue<Message> inputQueue, ClockService clock, String remoteName) {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
+		this.clock = clock;
 		this.remoteName = remoteName;
 		new Thread(this).start();
 	}
@@ -43,6 +46,10 @@ public class WorkerThread implements Runnable {
 				if (tmp.getData() == null) {
 					System.err.println("Messager> " + connection.getInetAddress().getHostAddress() + " went offile");
 				} else {
+					synchronized (clock) {
+						TimeStamp ts = clock.getTimeStamp();
+					}
+					//TODO set timestamp
 					inputQueue.add(tmp);
 				}
 			}

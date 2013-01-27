@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
+import ds.lab.bean.TimeStamp;
 import ds.lab.message.Message;
 import ds.lab.message.MessageAction;
 
@@ -41,6 +42,10 @@ public class MessagePasser implements MessagePasserApi {
 	private AtomicInteger lastId;
 	private final int NUM_ACTION = 3;// DROP, DUPLICATE, DELAY
 	private Config config;
+	
+	/** clock and logger */
+	private ClockService clock;
+	//TODO logger
 
 	/**
 	 * Constructor read yaml formatted configure file, parse "configuration"
@@ -210,7 +215,7 @@ public class MessagePasser implements MessagePasserApi {
 				case DUPLICATE:
 					rcvNthTracker.incrementAndGet(1);
 					dup = message.clone();// add to list later
-					dup.setId(dup.getId());
+					dup.setId(message.getId());
 					// inputQueue.add(dup);
 				case DEFAULT:
 					// now there should be two identical messages to deliver.
@@ -257,23 +262,21 @@ public class MessagePasser implements MessagePasserApi {
 
 	private void connectAndSend(Message message) throws UnknownHostException, SocketException, IOException {
 		String dest = message.getDest();
+		TimeStamp ts = clock.getTimeStamp();
+		//TODO setTimeStamp, or put it after building socket
 		ObjectOutputStream out = outStreamMap.get(dest);
 		if (out == null) {// no socket connection yet, create it TODO if port change...
 			NodeBean n = nodeList.get(dest);
 			if (n == null)
 				throw new UnknownHostException("Message Send fails: unknown host " + dest);
 			Socket sendSocket = new Socket(n.getIp(), n.getPort());
-			// synchronized (WorkerThread.getSockMap()) {
-			// WorkerThread.getSockMap().put(InetAddress.getByName(n.getIp()).getHostAddress(),
-			// sendSocket);
-			// }
 			out = new ObjectOutputStream(sendSocket.getOutputStream());
 			outStreamMap.put(dest, out);
 		}
 		out.writeObject(message);
 		out.flush();
 		System.err.println("sent>>>>>>>>>msg"+message.getId());
-
+		//TODO send to logger
 	}
 	
 	private String getLocalName()
@@ -300,9 +303,9 @@ public class MessagePasser implements MessagePasserApi {
 //					 connection.setKeepAlive(true);
 					assert connection.isConnected();
 					String remote = connection.getInetAddress().getHostAddress();
-					System.err.println("Listener> " + remote + " has connectted you");
+					System.err.println("Listener> " + remote + " has connected you");
 
-					new WorkerThread(connection, inputQueue, ipNameMap.get(remote));
+					new WorkerThread(connection, inputQueue, clock, ipNameMap.get(remote));
 				}
 			} catch (EOFException e) {//someone offline
 				String remote = e.getMessage();

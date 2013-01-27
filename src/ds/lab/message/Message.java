@@ -10,8 +10,8 @@ public class Message implements Serializable, Cloneable {
 	 */
 	private static final long serialVersionUID = 1L;
 	
-	private Header header = null;
-	private Object data = null;	
+	protected Header header = null;
+	protected Object data = null;	
 	
 	public Message() {
 		this.header = new Header("", "", null);
@@ -61,7 +61,7 @@ public class Message implements Serializable, Cloneable {
 	}
 
 
-	private class Header implements Serializable {
+	class Header implements Serializable {
 		/**
 		 * 
 		 */

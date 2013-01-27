@@ -12,8 +12,9 @@ import ds.lab.message.TimeStampMessage;
 
 /**
  * Similar to WorkerThread
+ * 
  * @author dmei
- *
+ * 
  */
 public class LoggerWorkerThread implements Runnable {
 	private ObjectInputStream in;
@@ -21,11 +22,13 @@ public class LoggerWorkerThread implements Runnable {
 	private ArrayList<TimeStampMessage> messageList;
 	private ClockService clock;
 	private FileWriter writer;
-	private final String format = "%s\t%s: %d - %s\n";//TODO level, datetime, messageId, message
+	private final String format = "%s\t%s: %d - %s\n";// TODO level, datetime,
+														// messageId, message
 
 	Object rcved = null;
 
-	public LoggerWorkerThread(Socket connection, ArrayList<TimeStampMessage> messageList, ClockService clock, FileWriter writer) {
+	public LoggerWorkerThread(Socket connection, ArrayList<TimeStampMessage> messageList, ClockService clock,
+			FileWriter writer) {
 		super();
 		this.connection = connection;
 		this.messageList = messageList;
@@ -47,11 +50,11 @@ public class LoggerWorkerThread implements Runnable {
 				} else {
 					synchronized (this) {
 						TimeStamp ts = clock.getTimeStamp();
-						//TODO set timestamp
+						// TODO set timestamp
 						messageList.add(tmp);
 						writer.write(formatLog(tmp));
 					}
-					
+
 				}
 			}
 

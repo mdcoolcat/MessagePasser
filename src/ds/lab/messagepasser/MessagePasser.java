@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
 import ds.lab.bean.TimeStamp;
-import ds.lab.message.Message;
+import ds.lab.message.TimeStampMessage;
 import ds.lab.message.MessageAction;
 
 public class MessagePasser implements MessagePasserApi {
@@ -29,10 +29,10 @@ public class MessagePasser implements MessagePasserApi {
 	private HashMap<String, NodeBean> nodeList;// name-user
 	private HashMap<String, ObjectOutputStream> outStreamMap;// name-socket
 	/** message */
-	private BlockingQueue<Message> inputQueue; // input queue
-	private BlockingQueue<Message> outputQueue; // output queue
-	private BlockingQueue<Message> delayInputQueue; // input queue
-	private BlockingQueue<Message> delayOutputQueue; // output queue
+	private BlockingQueue<TimeStampMessage> inputQueue; // input queue
+	private BlockingQueue<TimeStampMessage> outputQueue; // output queue
+	private BlockingQueue<TimeStampMessage> delayInputQueue; // input queue
+	private BlockingQueue<TimeStampMessage> delayOutputQueue; // output queue
 	/** other local information */
 	private String localName;
 	private String configFileName;
@@ -59,6 +59,9 @@ public class MessagePasser implements MessagePasserApi {
 	public MessagePasser(String configurationFile, String localName) throws IOException {
 		config = new Config(configurationFile, localName);
 		MAX_THREAD = config.NUM_NODE;
+		//TODO create ClockService instance
+		clock = ClockService.getClock(0, MAX_THREAD);
+		//TODO create logger
 		nodeList =config.NODELIST;
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
@@ -73,10 +76,10 @@ public class MessagePasser implements MessagePasserApi {
 			ipNameMap.put(n.getIp(), n.getName());
 
 		/* queues and trackers */
-		inputQueue = new LinkedBlockingDeque<Message>();
-		outputQueue = new LinkedBlockingDeque<Message>();
-		delayInputQueue = new LinkedBlockingDeque<Message>();
-		delayOutputQueue = new LinkedBlockingDeque<Message>();
+		inputQueue = new LinkedBlockingDeque<TimeStampMessage>();
+		outputQueue = new LinkedBlockingDeque<TimeStampMessage>();
+		delayInputQueue = new LinkedBlockingDeque<TimeStampMessage>();
+		delayOutputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		/* listener */
@@ -110,7 +113,7 @@ public class MessagePasser implements MessagePasserApi {
 	
 
 	@Override
-	public void send(Message message) {
+	public void send(TimeStampMessage message) {
 		// TODO sync message id
 		message.setId(lastId.incrementAndGet());
 		RuleBean theRule = getMatchedSendRule(message);
@@ -125,7 +128,7 @@ public class MessagePasser implements MessagePasserApi {
 		}
 		System.out.println(action);
 		try {
-			Message dup = null;
+			TimeStampMessage dup = null;
 			switch (action) {
 			case DROP:// ignore message
 				message = null;
@@ -165,7 +168,7 @@ public class MessagePasser implements MessagePasserApi {
 		}
 	}
 
-	private RuleBean getMatchedSendRule(Message message) {
+	private RuleBean getMatchedSendRule(TimeStampMessage message) {
 		ArrayList<RuleBean> rules = config.getSendRules();
 		RuleBean theRule = null;
 		for (RuleBean r : rules) {
@@ -188,10 +191,10 @@ public class MessagePasser implements MessagePasserApi {
 	}
 
 	@Override
-	public ArrayList<Message> receive() {
-		ArrayList<Message> incoming = null;
+	public ArrayList<TimeStampMessage> receive() {
+		ArrayList<TimeStampMessage> incoming = null;
 		if (!inputQueue.isEmpty()) {
-			Message message = inputQueue.remove();// examine the 1st one
+			TimeStampMessage message = inputQueue.remove();// examine the 1st one
 			RuleBean theRule = getMatchedReceiveRule(message);
 			System.err.println(theRule);
 			MessageAction action;
@@ -205,7 +208,7 @@ public class MessagePasser implements MessagePasserApi {
 			}
 			System.out.println(action);
 			try {
-				Message dup = null;
+				TimeStampMessage dup = null;
 				switch (action) {
 				case DROP:// drop message TODO lastId???
 					break;
@@ -220,7 +223,7 @@ public class MessagePasser implements MessagePasserApi {
 				case DEFAULT:
 					// now there should be two identical messages to deliver.
 					// deliver delayed messages after the new one(s)
-					incoming = new ArrayList<Message>();
+					incoming = new ArrayList<TimeStampMessage>();
 					incoming.add(message);
 					if (dup != null)
 						incoming.add(dup);
@@ -237,7 +240,7 @@ public class MessagePasser implements MessagePasserApi {
 		return incoming;
 	}
 
-	private RuleBean getMatchedReceiveRule(Message message) {
+	private RuleBean getMatchedReceiveRule(TimeStampMessage message) {
 		ArrayList<RuleBean> rules = config.getRcvRules();
 		RuleBean theRule = null;
 		for (RuleBean r : rules) {
@@ -260,7 +263,7 @@ public class MessagePasser implements MessagePasserApi {
 		return MessageAction.DEFAULT;
 	}
 
-	private void connectAndSend(Message message) throws UnknownHostException, SocketException, IOException {
+	private void connectAndSend(TimeStampMessage message) throws UnknownHostException, SocketException, IOException {
 		String dest = message.getDest();
 		TimeStamp ts = clock.getTimeStamp();
 		//TODO setTimeStamp, or put it after building socket
@@ -276,7 +279,6 @@ public class MessagePasser implements MessagePasserApi {
 		out.writeObject(message);
 		out.flush();
 		System.err.println("sent>>>>>>>>>msg"+message.getId());
-		//TODO send to logger
 	}
 	
 	private String getLocalName()
@@ -356,9 +358,9 @@ public class MessagePasser implements MessagePasserApi {
 						sendMessage(dest, mk, outMessage);
 
 					} else if (input.equals("1") || input.equals("receive") || input.equals("r")) {
-						ArrayList<Message> incoming = receive();
+						ArrayList<TimeStampMessage> incoming = receive();
 						if (incoming != null) {
-							for (Message m : incoming) {
+							for (TimeStampMessage m : incoming) {
 								synchronized (lastId) {
 									if (lastId.get() < m.getId())
 										lastId.set(m.getId());
@@ -379,7 +381,7 @@ public class MessagePasser implements MessagePasserApi {
 		}
 
 		private void sendMessage(String dest, String kind, Object data) {
-			send(new Message(localName, dest, kind.toLowerCase(), data));
+			send(new TimeStampMessage(localName, dest, kind.toLowerCase(), data));
 		}
 	}
 }

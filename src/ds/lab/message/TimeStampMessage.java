@@ -6,6 +6,14 @@ import ds.lab.bean.TimeStamp;
 
 public class TimeStampMessage extends Message implements Serializable {
 
+//	public TimeStampMessage() {
+//		super();
+//	}
+
+	public TimeStampMessage(String src, String dest, String kind, Object data) {
+		super(src, dest, kind, data);
+	}
+
 	/**
 	 * 
 	 */

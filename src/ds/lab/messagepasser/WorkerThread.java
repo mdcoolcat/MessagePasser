@@ -7,7 +7,7 @@ import java.net.Socket;
 import java.util.concurrent.BlockingQueue;
 
 import ds.lab.bean.TimeStamp;
-import ds.lab.message.Message;
+import ds.lab.message.TimeStampMessage;
 
 /**
  * thread from listener thread, responsible for reading from socket and add to
@@ -20,13 +20,13 @@ import ds.lab.message.Message;
 public class WorkerThread implements Runnable {
 	private ObjectInputStream in;
 	private Socket connection;
-	private BlockingQueue<Message> inputQueue; // input queue
+	private BlockingQueue<TimeStampMessage> inputQueue; // input queue
 	private String remoteName;
 	private ClockService clock;
 
 	Object rcved = null;
 
-	public WorkerThread(Socket connection, BlockingQueue<Message> inputQueue, ClockService clock, String remoteName) {
+	public WorkerThread(Socket connection, BlockingQueue<TimeStampMessage> inputQueue, ClockService clock, String remoteName) {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
@@ -42,7 +42,7 @@ public class WorkerThread implements Runnable {
 			while (true) {
 				rcved = in.readObject();
 				// TODO data type swtich
-				Message tmp = (Message) rcved;
+				TimeStampMessage tmp = (TimeStampMessage) rcved;
 				if (tmp.getData() == null) {
 					System.err.println("Messager> " + connection.getInetAddress().getHostAddress() + " went offile");
 				} else {

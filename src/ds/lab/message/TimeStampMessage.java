@@ -31,9 +31,9 @@ public class TimeStampMessage extends Message implements Serializable {
 	
 	@Override
 	public TimeStampMessage clone() throws CloneNotSupportedException {
-		TimeStampMessage msg = (TimeStampMessage) super.clone();
-		msg.setTimeStamp(getTimeStamp());
-		return msg;
+//		TimeStampMessage msg = (TimeStampMessage) super.clone();
+//		msg.setTimeStamp(getTimeStamp());
+		return new TimeStampMessage(getSrc(), getDest(), getKind(), data);
 	}
 
 }

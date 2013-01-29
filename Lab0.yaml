@@ -11,10 +11,10 @@ Configuration :
     Port : 12344        # This is the incoming port on which MP will listen
                         # May be changed for further communication as usual
   - Name : logger
-    IP   : 128.237.115.24
+    IP   : 192.168.145.141
     Port : 14255
   - Name : charlie
-    IP   : 128.237.131.36
+    IP   : 128.237.115.24
     Port : 12998
   - Name : daphnie
     IP   : 128.237.131.36

@@ -1,22 +1,13 @@
 package ds.lab.bean;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import java.io.Serializable;
 
-public class TimeStamp implements Comparable<TimeStamp>{
-	private AtomicInteger d;
-
-	public AtomicInteger getD() {
-		return d;
-	}
-
-	public void setD(int d) {
-		this.d.set(d);
-	}
-
-	@Override
-	public int compareTo(TimeStamp o) {
-		// TODO Auto-generated method stub
-		return 0;
-	}
+public abstract class TimeStamp<E> implements Comparable<E>, Serializable{
 	
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 3L;
+
+	public TimeStamp(){}
 }

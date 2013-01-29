@@ -37,14 +37,19 @@ public class LoggerFacility extends NodeBean implements LoggerApi {
 	}
 	
 	@Override
-	public void log(TimeStampMessage message) throws IOException {
+	public void log(TimeStampMessage message) {
 		assert out != null;
-		out.writeObject(message);
-		out.flush();
+		try {
+			out.writeObject(message);
+			out.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
 	}
 
 	@Override
-	public void log(LogLevel level, TimeStampMessage message) throws IOException {
+	public void log(LogLevel level, TimeStampMessage message) {
 		// TODO deal with level
 		log(message);
 	}

@@ -1,23 +1,16 @@
 package ds.lab.message;
 
-import java.io.Serializable;
-
 import ds.lab.bean.TimeStamp;
 
-public class TimeStampMessage extends Message implements Serializable {
-
-//	public TimeStampMessage() {
-//		super();
-//	}
+public class TimeStampMessage extends Message {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
 
 	public TimeStampMessage(String src, String dest, String kind, Object data) {
 		super(src, dest, kind, data);
 	}
-
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 8573893575075541922L;
 
 	private TimeStamp timeStamp;
 
@@ -29,11 +22,13 @@ public class TimeStampMessage extends Message implements Serializable {
 		this.timeStamp = timeStamp;
 	}
 	
+	
 	@Override
 	public TimeStampMessage clone() throws CloneNotSupportedException {
-//		TimeStampMessage msg = (TimeStampMessage) super.clone();
-//		msg.setTimeStamp(getTimeStamp());
-		return new TimeStampMessage(getSrc(), getDest(), getKind(), data);
+		TimeStampMessage msg = new TimeStampMessage(this.getSrc(), this.getDest(), getKind(), this.getData());
+		msg.setTimeStamp(this.getTimeStamp());
+		//return new TimeStampMessage(getSrc(), getDest(), getKind(), data);
+		return msg;
 	}
 
 }

@@ -1,11 +1,15 @@
 package ds.lab.messagepasser;
 
+import java.io.BufferedWriter;
 import java.io.EOFException;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Scanner;
 
@@ -34,14 +38,32 @@ public class Logger {
 	/** clock */
 	private ClockService clock;
 	/** log file */
-	private final String logPath = "log.txt";
-	private FileWriter writer;
+	private final String logPath = "/Users/dmei/Desktop/log";
+	private File file;
 
 	public Logger(String configurationFile) throws IOException {
 		config = new Config(configurationFile, localName);
 		MAX_THREAD = config.NUM_NODE;
-		// TODO create ClockService instance
-		clock = ClockService.getClock(0, MAX_THREAD);
+		Scanner sc = new Scanner(System.in);
+		System.err.println("Enter type of clock that you require for your application");
+		System.out.println("0. Logical \t 1. Vector");
+		String input=sc.nextLine().toLowerCase();
+		int numOfNodes;
+		int clockid=0;
+		if(input.equals("0")||input.equals("logical")||input.equals("l"))
+		{
+		  	clockid=0;
+		  	numOfNodes=0;
+		  	clock = ClockService.getClock(clockid,localName,numOfNodes,config.NODELIST);
+		}
+		else if(input.equals("1")||input.equals("vector")||input.equals("v"))
+		{
+		  	clockid=1;
+		  	numOfNodes=MAX_THREAD;
+		  	clock = ClockService.getClock(clockid,localName,numOfNodes,config.NODELIST);
+		}
+		System.out.println("Clock selected:"+clockid);
+	
 		nodeList = config.NODELIST;
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
@@ -56,7 +78,7 @@ public class Logger {
 		messageList = new ArrayList<TimeStampMessage>();// TODO comparator based
 														// on timestamps
 		/* log file, shared by threads */
-		writer = new FileWriter(logPath);
+		file = new File(logPath);
 		/* listener */
 		listenSocket = new ServerSocket(me.getPort());
 		ListenThread listener = new ListenThread();
@@ -82,7 +104,7 @@ public class Logger {
 					assert connection.isConnected();
 					String remote = connection.getInetAddress().getHostAddress();
 					System.err.println("Listener> " + remote + " has connected you");
-					new LoggerWorkerThread(connection, messageList, clock, writer);
+					new LoggerWorkerThread(connection, messageList, file);
 				}
 			} catch (EOFException e) {// someone offline
 				String remote = e.getMessage();
@@ -109,7 +131,15 @@ public class Logger {
 				System.err.println("Logger> Press any key to output logs");
 				sc = new Scanner(System.in);
 				sc.nextLine();
-				System.out.println(messageList);// TODO sort?
+				Collections.sort(messageList, new Comparator<TimeStampMessage>() {
+
+					@Override
+					public int compare(TimeStampMessage o1, TimeStampMessage o2) {
+						return o1.getTimeStamp().compareTo(o2.getTimeStamp());
+					}
+				});
+				for (TimeStampMessage m : messageList)
+					System.out.println(m.getTimeStamp()+ " " + m);// TODO we need to sort it before output. in order to use Collections.sort(), a Comparator is needed (please refer to api doc). That's why I want the TimeStamp to implement interface
 				try {
 					Thread.sleep(1000);
 				} catch (InterruptedException e) {

@@ -106,12 +106,6 @@ public class Config {
 								rb.setDest(innerdetails.getValue().toString());
 							if (innerdetails.getKey().equalsIgnoreCase("Kind")) {
 								rb.setKind(innerdetails.getValue().toString());
-//								if (innerdetails.getValue().toString().equalsIgnoreCase("Lookup"))
-//									rb.setKind(MessageKind.LOOKUP);
-//								if (innerdetails.getValue().toString().equalsIgnoreCase("Ack"))
-//									rb.setKind(MessageKind.ACK);
-//								if (innerdetails.getValue().toString().equalsIgnoreCase("None"))
-//									rb.setKind(MessageKind.NONE);
 							}
 							if (innerdetails.getKey().equalsIgnoreCase("ID"))
 								rb.setId(Integer.parseInt(innerdetails.getValue().toString()));
@@ -139,6 +133,8 @@ public class Config {
 									rb.setAction(MessageAction.DELAY);
 								if (innerdetails.getValue().toString().equalsIgnoreCase("Duplicate"))
 									rb.setAction(MessageAction.DUPLICATE);
+								if (innerdetails.getValue().toString().equalsIgnoreCase("Default"))
+									rb.setAction(MessageAction.DEFAULT);
 							}
 
 							if (innerdetails.getKey().equalsIgnoreCase("Src"))
@@ -164,7 +160,7 @@ public class Config {
 
 				keytype++;
 				} catch (NullPointerException e) {
-					System.err.println("Config> No rule");
+					System.out.println("no rule found");
 					continue;
 				}
 			}

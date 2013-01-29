@@ -1,6 +1,10 @@
 package ds.lab.messagepasser;
 
+import java.util.HashMap;
+
+import ds.lab.bean.NodeBean;
 import ds.lab.bean.TimeStamp;
+import ds.lab.message.TimeStampMessage;
 
 public abstract class ClockService {
 	private static final int LOGICAL_ID = 0;
@@ -10,20 +14,23 @@ public abstract class ClockService {
 	protected TimeStamp myTimeStamp;
 	
 	//TODO factory pattern ok???
-	public static ClockService getClock(int clockId, int numOfNode) {
+	public static ClockService getClock(int clockId, String localName,int numOfNode,HashMap<String,NodeBean> nodelist) {
 		switch (clockId) {
 		case LOGICAL_ID:
 			if (clock == null) 
-				 clock = new LogicalClock();
+				 clock = new LogicalClock(localName);
 			break;
 		case VECTOR_ID:
 			if (clock == null)
-				clock = new VectorClock(numOfNode);
+				clock = new VectorClock(numOfNode,nodelist);
+			break;
 		default:
 			clock = null;
 		}
 		return clock;
 	}
-	
-	abstract TimeStamp getTimeStamp();
+	//TODO: required because its to be overridden differently by the 2 different clocks
+	abstract TimeStamp getNewTimeStamp(String localName);
+	abstract TimeStamp getCurrentTimeStamp(String localName);
+	abstract TimeStamp updateTimeStampOnReceive(String localName, TimeStampMessage Tsm);
 }

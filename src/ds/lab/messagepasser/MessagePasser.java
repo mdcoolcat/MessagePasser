@@ -202,6 +202,7 @@ public class MessagePasser implements MessagePasserApi {
 			}
 		} catch (UnknownHostException e) {
 			System.err.println("Messager> " + e.getMessage());
+			sendToLogger(LogLevel.WARNING, e.getMessage() + ". Sender: " + localName);
 		} catch (SocketException e) {
 			String msg = "Message cannot be delivered: " + message.getDest() + " is offline";
 			System.err.println(msg);
@@ -238,8 +239,6 @@ public class MessagePasser implements MessagePasserApi {
 		String dest = tsm.getDest();
 		//TODO setTimeStamp, or put it after building socket
 		//TimeStamp has to be appended before checking rules (seeAlso send(Message msg))
-		//DEBUGGING:
-//		System.out.println(tsm.getSrc()+"\n"+tsm.getDest()+"\n"+tsm.getId()+"\n"+tsm.getKind()+"\n"+tsm.getData()+"\n"+tsm.getTimeStamp().getVector().get(tsm.getSrc()).get());
 		
 		ObjectOutputStream out = outStreamMap.get(dest);
 		if (out == null) {// no socket connection yet, create it TODO if port change...
@@ -436,7 +435,7 @@ public class MessagePasser implements MessagePasserApi {
 				}
 			} catch (NoSuchElementException e) {
 				String msg = "Messager> User press CTRL+C. Bye!";
-				System.err.println(msg);
+//				System.err.println(msg);
 				sendToLogger(LogLevel.WARNING, msg);
 			} finally {
 				sc.close();

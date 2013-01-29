@@ -27,6 +27,7 @@ public class LoggerWorkerThread implements Runnable {
 	private final String format = "%s: %s - %s\n";// TODO timestamp, level, , message
 
 	Object rcved = null;
+	private String remoteName;
 
 	public LoggerWorkerThread(Socket connection, ArrayList<TimeStampMessage> messageList, File file) throws IOException {
 		super();
@@ -48,6 +49,8 @@ public class LoggerWorkerThread implements Runnable {
 				if (tmp.getData() == null) {
 					System.err.println("Messager> " + connection.getInetAddress().getHostAddress() + " went offile");
 				} else {
+					remoteName = tmp.getSrc();
+					System.out.println(tmp.getTimeStamp());
 					synchronized (messageList) {
 //						TimeStamp ts = clock.getTimeStamp();
 						// TODO set timestamp
@@ -55,11 +58,7 @@ public class LoggerWorkerThread implements Runnable {
 					}
 					writer = new BufferedWriter(new FileWriter(file, true));
 					synchronized (writer) {
-						System.out.println("writer wait....");
-//						writer.wait();
 						writer.append(formatLog(tmp));
-						System.out.println("write done...");
-//						writer.notifyAll();
 						writer.close();
 					}
 						
@@ -68,7 +67,12 @@ public class LoggerWorkerThread implements Runnable {
 			}
 
 		} catch (EOFException e) {
-			e.printStackTrace();
+			try {
+				in.close();
+				throw new EOFException(remoteName);
+			} catch (IOException e1) {
+				e1.printStackTrace();
+			}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		} catch (Exception e) {

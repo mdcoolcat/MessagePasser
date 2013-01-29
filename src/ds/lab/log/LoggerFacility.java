@@ -42,6 +42,7 @@ public class LoggerFacility extends NodeBean implements LoggerApi {
 		try {
 			out.writeObject(message);
 			out.flush();
+			out.reset();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

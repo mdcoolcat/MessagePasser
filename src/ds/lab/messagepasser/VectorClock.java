@@ -29,7 +29,7 @@ public class VectorClock extends ClockService {
 			vts.getVector().get(nodeName).incrementAndGet();// set each
 															// timestamp to 0
 		}
-		HashMap<String, AtomicInteger> key2 = vts.getVector();
+//		HashMap<String, AtomicInteger> key2 = vts.getVector();
 //		System.out.println(key2);
 	}
 
@@ -41,7 +41,7 @@ public class VectorClock extends ClockService {
 	@Override
 	VectorTimeStamp getNewTimeStamp(String localName) {
 		vts.getVector().get(localName).incrementAndGet();
-		HashMap<String, AtomicInteger> key2 = vts.getVector();
+//		HashMap<String, AtomicInteger> key2 = vts.getVector();
 //		System.out.println(key2);
 		return vts;
 	}

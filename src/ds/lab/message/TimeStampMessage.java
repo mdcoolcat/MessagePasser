@@ -30,5 +30,10 @@ public class TimeStampMessage extends Message {
 		//return new TimeStampMessage(getSrc(), getDest(), getKind(), data);
 		return msg;
 	}
+	
+	@Override
+	public String toString() {
+		return timeStamp + " " + super.toString();
+	}
 
 }

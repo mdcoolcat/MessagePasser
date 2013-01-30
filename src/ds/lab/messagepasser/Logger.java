@@ -1,17 +1,16 @@
 package ds.lab.messagepasser;
 
-import java.io.BufferedWriter;
 import java.io.EOFException;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Map.Entry;
 import java.util.Scanner;
+import java.util.TreeSet;
 
 import ds.lab.bean.NodeBean;
 import ds.lab.message.TimeStampMessage;
@@ -37,6 +36,7 @@ public class Logger {
 	private Config config;
 	/** clock */
 	private ClockService clock;
+	private int clockid;
 	/** log file */
 	private final String logPath = "/Users/dmei/Desktop/log";
 	private File file;
@@ -47,23 +47,18 @@ public class Logger {
 		Scanner sc = new Scanner(System.in);
 		System.err.println("Enter type of clock that you require for your application");
 		System.out.println("0. Logical \t 1. Vector");
-		String input=sc.nextLine().toLowerCase();
+		String input = sc.nextLine().toLowerCase();
 		int numOfNodes;
-		int clockid=0;
-		if(input.equals("0")||input.equals("logical")||input.equals("l"))
-		{
-		  	clockid=0;
-		  	numOfNodes=0;
-		  	clock = ClockService.getClock(clockid,localName,numOfNodes,config.NODELIST);
+		if (input.equals("0") || input.equals("logical") || input.equals("l")) {
+			clockid = 0;
+			numOfNodes = 0;
+			clock = ClockService.getClock(clockid, localName, numOfNodes, config.NODELIST);
+		} else if (input.equals("1") || input.equals("vector") || input.equals("v")) {
+			clockid = 1;
+			numOfNodes = MAX_THREAD;
+			clock = ClockService.getClock(clockid, localName, numOfNodes, config.NODELIST);
 		}
-		else if(input.equals("1")||input.equals("vector")||input.equals("v"))
-		{
-		  	clockid=1;
-		  	numOfNodes=MAX_THREAD;
-		  	clock = ClockService.getClock(clockid,localName,numOfNodes,config.NODELIST);
-		}
-		System.out.println("Clock selected:"+clockid);
-	
+
 		nodeList = config.NODELIST;
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
@@ -131,15 +126,61 @@ public class Logger {
 				System.err.println("Logger> Press any key to output logs");
 				sc = new Scanner(System.in);
 				sc.nextLine();
-				Collections.sort(messageList, new Comparator<TimeStampMessage>() {
-
-					@Override
-					public int compare(TimeStampMessage o1, TimeStampMessage o2) {
-						return o1.getTimeStamp().compareTo(o2.getTimeStamp());
+				// print out messages
+				System.out.println("id |\tTS\tmID\t | Src | Dest || Src | kind");
+				int id = 0;
+				for (TimeStampMessage m : messageList) {
+					System.out.println(id + " |\t" + m);
+					id++;
+				}
+				if (clockid == 1) {
+					// print out matrix
+					int size = messageList.size();
+					for (int i = 0; i < size; i++)
+						System.out.print(i + "\t");
+					System.out.println();
+					for (int i = 0; i < size; i++) {
+						for (int j = 0; j < size; j++) {
+							if (i == j) {
+								System.out.print("/\t");
+								continue;
+							}
+							int relation = messageList.get(i).getTimeStamp().compareTo(messageList.get(j).getTimeStamp());
+							switch (relation) {
+							case -1:
+								System.out.print("BEFORE\t");
+								break;
+							case 1:
+								System.out.print("AFTER\t");
+								break;
+							default:
+								System.out.print("CUNCURRENT\t");
+								break;
+							}
+						}
+						System.out.println();
 					}
-				});
-				for (TimeStampMessage m : messageList)
-					System.out.println(m.getTimeStamp()+ " " + m);// TODO we need to sort it before output. in order to use Collections.sort(), a Comparator is needed (please refer to api doc). That's why I want the TimeStamp to implement interface
+				} else {
+					HashMap<String, TreeSet<TimeStampMessage>> eachUser = new HashMap<String, TreeSet<TimeStampMessage>>();
+					for (TimeStampMessage m : messageList) {
+						String src = m.getSrc();
+						if (!eachUser.containsKey(src))
+							eachUser.put(src, new TreeSet<TimeStampMessage>(new Comparator<TimeStampMessage>() {
+
+								@Override
+								public int compare(TimeStampMessage o1, TimeStampMessage o2) {
+									return o1.getTimeStamp().compareTo(o2.getTimeStamp());
+								}
+							}));
+						eachUser.get(src).add(m);
+					}
+					for (String src : eachUser.keySet()) {
+						System.out.print(src+": ");
+						for (TimeStampMessage localM : eachUser.get(src))
+							System.out.print(localM.getTimeStamp()+"->");
+						System.out.println();
+					}
+				}
 				try {
 					Thread.sleep(1000);
 				} catch (InterruptedException e) {
@@ -153,6 +194,21 @@ public class Logger {
 	 * @param args
 	 */
 	public static void main(String[] args) {
+		// VectorTimeStamp t1 = new VectorTimeStamp();
+		// HashMap<String,AtomicInteger> v1 = new HashMap<String,
+		// AtomicInteger>();
+		// v1.put("1", new AtomicInteger(0));
+		// v1.put("2", new AtomicInteger(0));
+		// v1.put("3", new AtomicInteger(0));
+		// t1.setVector(v1);
+		// VectorTimeStamp t2 = new VectorTimeStamp();
+		// HashMap<String,AtomicInteger> v2 = new HashMap<String,
+		// AtomicInteger>();
+		// v2.put("1", new AtomicInteger(0));
+		// v2.put("2", new AtomicInteger(0));
+		// v2.put("3", new AtomicInteger(1));
+		// t2.setVector(v2);
+		// System.out.println(t1.compareTo(t2));
 		if (args.length < 1) {
 			System.out.println("Usage: configFile");
 			System.exit(0);

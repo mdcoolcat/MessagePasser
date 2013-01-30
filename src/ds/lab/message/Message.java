@@ -79,27 +79,8 @@ public class Message implements Serializable, Cloneable {
 		
 		@Override
 		public String toString() {
-			return "Message " + this.id + ", From " + this.src + " To " + this.dest + " kind: " + kind;
+			return this.id + " | " + this.src + " | " + this.dest + " " +
+					"| " + kind;
 		}
 	}
-
-
-//	public static MessageKind getMessageKind(int k) {
-//			MessageKind mk=null;
-//			switch(k){
-//			case 0: return MessageKind.LOOKUP;
-//			case 1: return MessageKind.ACK;
-//			case 2: return MessageKind.NONE;
-//			default: return MessageKind.NONE;
-//			}
-//	}
-//	public static int getMessageKindIndex(String str) {
-//		switch(str.toLowerCase()){
-//		case "lookup": return 0;
-//		case "ack": return 1;
-//		case "none": return 2;
-//		default: return 2;
-//		}
-//}
-	
 }

@@ -26,8 +26,9 @@ public class WorkerThread implements Runnable {
 	private BlockingQueue<TimeStampMessage> inputQueue; // input queue
 	private String remoteName;
 	private ClockService clock;
-	
-	public WorkerThread(Socket connection, BlockingQueue<TimeStampMessage> inputQueue, ClockService clock, String remoteName) {
+
+	public WorkerThread(Socket connection, BlockingQueue<TimeStampMessage> inputQueue, ClockService clock,
+			String remoteName) {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
@@ -41,16 +42,17 @@ public class WorkerThread implements Runnable {
 		try {
 			in = new ObjectInputStream(connection.getInputStream());
 			while (true) {
-//				rcved = in.readObject();
+				// rcved = in.readObject();
 				TimeStampMessage tmp = (TimeStampMessage) in.readObject();
 				if (tmp.getData() == null) {
 					System.err.println("Messager> " + connection.getInetAddress().getHostAddress() + " went offline");
 				} else {
-					synchronized (clock) {
-						TimeStamp ts = clock.updateTimeStampOnReceive(tmp.getDest(), tmp);
-						tmp.setTimeStamp(ts);
-					}
 					inputQueue.add(tmp);
+					synchronized (clock) {
+						System.out.println(" my current ts: " + clock.getCurrentTimeStamp(tmp.getDest()));
+						TimeStamp ts = clock.updateTimeStampOnReceive(tmp.getDest(), tmp);
+					}
+					System.out.println("after receive my ts: " + clock.getCurrentTimeStamp(tmp.getDest()));
 				}
 			}
 

@@ -30,12 +30,11 @@ public class VectorClock extends ClockService {
 															// timestamp to 0
 		}
 		HashMap<String, AtomicInteger> key2 = vts.getVector();
-		System.out.println(key2);
+//		System.out.println(key2);
 	}
 
 	@Override
 	VectorTimeStamp getCurrentTimeStamp(String localName) {
-		// TODO Auto-generated method stub
 		return vts;
 	}
 
@@ -43,11 +42,11 @@ public class VectorClock extends ClockService {
 	VectorTimeStamp getNewTimeStamp(String localName) {
 		vts.getVector().get(localName).incrementAndGet();
 		HashMap<String, AtomicInteger> key2 = vts.getVector();
-		System.out.println(key2);
+//		System.out.println(key2);
 		return vts;
 	}
 
-	synchronized VectorTimeStamp updateTimeStampOnReceive(String localName, TimeStampMessage senderTsm) {
+	VectorTimeStamp updateTimeStampOnReceive(String localName, TimeStampMessage senderTsm) {
 		HashMap<String, AtomicInteger> myVector = vts.getVector();
 		for (Map.Entry<String, AtomicInteger> nodes : ((VectorTimeStamp) senderTsm.getTimeStamp()).getVector()
 				.entrySet()) {
@@ -65,7 +64,7 @@ public class VectorClock extends ClockService {
 		}
 		vts.setVector(myVector);
 		HashMap<String, AtomicInteger> key2 = vts.getVector();
-		System.out.println(key2);
+//		System.out.println(key2);
 		return vts;
 	}
 }

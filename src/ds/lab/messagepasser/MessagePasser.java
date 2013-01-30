@@ -151,9 +151,9 @@ public class MessagePasser implements MessagePasserApi {
 		
 		//TimeStampMessage tsm=new TimeStampMessage(message.getSrc(),message.getDest(),message.getKind(),message.getData());
 		
-		TimeStamp ts=this.clock.getNewTimeStamp(message.getSrc());
+		TimeStamp ts=this.clock.getCurrentTimeStamp(localName);
 		message.setTimeStamp(ts);
-		System.out.println("prepare to send: "+message.getTimeStamp());
+		System.out.println("prepare to send. My current ts: "+message.getTimeStamp());
 		RuleBean theRule = getMatchedSendRule(message);
 		MessageAction action;
 		if (theRule == null) {
@@ -180,6 +180,7 @@ public class MessagePasser implements MessagePasserApi {
 				sendNthTracker.incrementAndGet(1);
 				dup = message.clone();
 				dup.setId(message.getId());
+				dup.setTimeStamp(message.getTimeStamp());
 				
 			case DEFAULT:
 				outputQueue.add(message);
@@ -189,14 +190,16 @@ public class MessagePasser implements MessagePasserApi {
 				 * outputqueue.add(dup) isn't it ?? ----this needs count for sending the 2 message. if another thread adds one msg between them, you don't know which two should send...my opinion
 				 * RESOLVED-Added to the outputqueue
 				 */
-				connectAndSend(outputQueue.remove());//send the original message
+				connectAndSend(outputQueue.remove(), false);//send the original message
 				
-				  if (dup != null)
-					connectAndSend(dup);
+				  if (dup != null) {
+					  System.out.println("sending duplicate..");
+						connectAndSend(dup, true);
+				  }
 				
 				synchronized (delayOutputQueue) {
 					while (!delayOutputQueue.isEmpty())
-						connectAndSend(delayOutputQueue.remove());
+						connectAndSend(delayOutputQueue.remove(), false);
 				}
 				
 			}
@@ -235,7 +238,7 @@ public class MessagePasser implements MessagePasserApi {
 			return r.getAction();
 		return MessageAction.DEFAULT;
 	}
-	private void connectAndSend(TimeStampMessage tsm) throws UnknownHostException, SocketException, IOException {
+	private void connectAndSend(TimeStampMessage tsm, boolean isDup) throws UnknownHostException, SocketException, IOException {
 		String dest = tsm.getDest();
 		//TODO setTimeStamp, or put it after building socket
 		//TimeStamp has to be appended before checking rules (seeAlso send(Message msg))
@@ -252,7 +255,9 @@ public class MessagePasser implements MessagePasserApi {
 		out.writeObject(tsm);
 		out.flush();
 		out.reset();
-		System.err.println("sent>>>>>>>>>msg"+tsm.getId() + " " + tsm.getTimeStamp());
+		if (!isDup)//TODO do not update my ts if this is a dup msg
+			clock.getNewTimeStamp(localName);
+		System.err.println("sent>>>>>>>>>msg"+tsm.getId() + " now my ts: " + tsm.getTimeStamp());
 	}
 	@Override
 	public ArrayList<TimeStampMessage> receive() {
@@ -341,7 +346,7 @@ public class MessagePasser implements MessagePasserApi {
 
 	private void sendToLogger(LogLevel level, String msg) {
 		TimeStampMessage tsMesseage = new TimeStampMessage(localName, "logger", level.toString(), msg);
-		tsMesseage.setTimeStamp(clock.getNewTimeStamp(localName));	//not sure should use this clock method or other ones
+		tsMesseage.setTimeStamp(clock.getCurrentTimeStamp(localName));	//not sure should use this clock method or other ones
 		logger.log(tsMesseage);
 	}
 

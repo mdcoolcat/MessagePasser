@@ -36,6 +36,9 @@ public class Message implements Serializable, Cloneable {
 	public String getDest() {
 		return header.dest;
 	}
+	public void setDest(String newDest) {
+		header.dest = newDest;
+	}
 	public String getSrc() {
 		return header.src;
 	}

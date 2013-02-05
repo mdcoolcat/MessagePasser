@@ -7,7 +7,7 @@ public class TimeStampMessage extends Message {
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
-	private TimeStampMessage myDup = null;
+	protected TimeStampMessage myDup = null;
 	
 	public TimeStampMessage(String src, String dest, String kind, Object data) {
 		super(src, dest, kind, data);
@@ -49,23 +49,15 @@ public class TimeStampMessage extends Message {
 		if (getClass() != obj.getClass())
 			return false;
 		TimeStampMessage other = (TimeStampMessage) obj;
-		return this.myDup == other;
-//		if (this.getId() != other.getId())
-//			return false;
-//		if (!this.getSrc().equals(other.getSrc()))
-//			return false;
-//		if (!this.getDest().equals(other.getSrc()))
-//			return false;
-//		if (!this.getKind().equals(other.getKind()))
-//				return false;
-//		if (!this.getData().equals(other.getData()))
-//				return false;
-//		return true;
+		if (this.myDup != null)
+			return this.myDup == other;
+		else
+			return this.getId() == other.getId() && this.getSrc().equals(other.getSrc());//<src, id> unique
 	}
 
 	@Override
 	public String toString() {
-		return timeStamp + " " + super.toString();
+		return timeStamp + " |" + super.toString();
 	}
 
 }

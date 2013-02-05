@@ -23,6 +23,7 @@ import ds.lab.log.LogLevel;
 import ds.lab.log.LoggerFacility;
 import ds.lab.message.MessageAction;
 import ds.lab.message.MulticastMessage;
+import ds.lab.message.MulticastType;
 import ds.lab.message.TimeStampMessage;
 
 public class MessagePasser implements MessagePasserApi {
@@ -40,10 +41,12 @@ public class MessagePasser implements MessagePasserApi {
 	private String localName;
 	private String configFileName;
 	private HashMap<String, String> ipNameMap; // for reverse lookup by ip, <ip,
+	private ArrayList<String> peerNames;
 												// name>
 	private AtomicIntegerArray sendNthTracker;
 	private AtomicIntegerArray rcvNthTracker;
 	private AtomicInteger lastId;
+	private AtomicInteger lastMulticastId;
 	private final int NUM_ACTION = 3;// DROP, DUPLICATE, DELAY
 	private Config config;
 
@@ -85,10 +88,14 @@ public class MessagePasser implements MessagePasserApi {
 		this.localName = localName;
 		this.configFileName = configurationFile;
 		lastId = new AtomicInteger(-1);
-		ipNameMap = new HashMap<String, String>();
-		for (NodeBean n : nodeList.values())
-			ipNameMap.put(n.getIp(), n.getName());
+		lastMulticastId = new AtomicInteger(-1);
 		nodeList.remove(me);
+		ipNameMap = new HashMap<String, String>();
+		peerNames = new ArrayList<String>();
+		for (NodeBean n : nodeList.values()) {
+			ipNameMap.put(n.getIp(), n.getName());
+			peerNames.add(n.getName());
+		}
 		/* queues and trackers */
 		inputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		outputQueue = new LinkedBlockingDeque<TimeStampMessage>();
@@ -99,7 +106,7 @@ public class MessagePasser implements MessagePasserApi {
 		/* listener */
 		outStreamMap = new HashMap<String, ObjectOutputStream>();
 		listenSocket = new ServerSocket(me.getPort());
-		ListenThread listener = new ListenThread();
+		ListenThread listener = new ListenThread(this);
 		// TODO for loop MAX_THREAD
 		new Thread(listener).start();
 		UserThread userIf = new UserThread();
@@ -125,37 +132,16 @@ public class MessagePasser implements MessagePasserApi {
 			e.printStackTrace();
 		}
 	}
-
-	private TimeStampMessage unicastMessage(String dest, String kind, Object data) {
-		int id = lastId.incrementAndGet();
-		TimeStamp ts = this.clock.getNewTimeStamp(localName);
-		TimeStampMessage msg = new TimeStampMessage(localName, dest, kind.toLowerCase(), data);
-		msg.setId(id);
-		msg.setTimeStamp(ts);
-		send(msg);
-		return msg;
-	}
-	
-	private void multicast(String kind, Object data) {
-		int id = lastId.incrementAndGet();
-		TimeStamp ts = this.clock.getNewTimeStamp(localName);
-		for (String peer : nodeList.keySet()) {
-			MulticastMessage message = new MulticastMessage(localName, peer, kind, data);
-			message.setId(id);
-			message.setTimeStamp(ts);
-			send(message);
-		}
-	}
 	
 	@Override
 	public void send(TimeStampMessage message) {
 //		if (!isMulticast) {// multicast message already set...
-//			message.setId(lastId.incrementAndGet());// TODO keep same if multi?
-//			// TODO: We should convert the message to timestampmessage type here
-//			TimeStamp ts = this.clock.getNewTimeStamp(localName);// TODO keep
-//																	// same if
-//																	// multi?
-//			message.setTimeStamp(ts);
+			message.setId(lastId.incrementAndGet());// TODO keep same if multi?
+			// TODO: We should convert the message to timestampmessage type here
+			TimeStamp ts = this.clock.getNewTimeStamp(localName);// TODO keep
+																	// same if
+																	// multi?
+			message.setTimeStamp(ts);
 //		}
 		RuleBean theRule = getMatchedSendRule(message);
 		MessageAction action;
@@ -252,10 +238,6 @@ public class MessagePasser implements MessagePasserApi {
 
 	private void connectAndSend(TimeStampMessage tsm) throws UnknownHostException, SocketException, IOException {
 		String dest = tsm.getDest();
-		// TODO setTimeStamp, or put it after building socket
-		// TimeStamp has to be appended before checking rules (seeAlso
-		// send(Message msg))
-
 		ObjectOutputStream out = outStreamMap.get(dest);
 		if (out == null) {// no socket connection yet, create it TODO if port
 							// change...
@@ -302,6 +284,12 @@ public class MessagePasser implements MessagePasserApi {
 	}
 
 	private class ListenThread implements Runnable {
+		private MessagePasser mp;
+		
+		public ListenThread(MessagePasser messagePasser) {
+			this.mp = messagePasser;
+		}
+
 		@Override
 		public void run() {
 			System.err.println("Listener> I'm " + localName);
@@ -319,7 +307,7 @@ public class MessagePasser implements MessagePasserApi {
 					String msg = remote + " has connected to " + localName;
 					System.err.println("Listener> " + remote + " has connected you");
 					sendToLogger(LogLevel.INFO, msg);
-					new WorkerThread(connection, inputQueue, delayInputQueue, rcvNthTracker, clock, config);
+					new WorkerThread(mp, connection, inputQueue, delayInputQueue, rcvNthTracker, clock, config, peerNames);
 				}
 			} catch (EOFException e) {// someone offline
 				String remote = e.getMessage();
@@ -381,6 +369,9 @@ public class MessagePasser implements MessagePasserApi {
 									if ((lastId.get() < m.getId()) || (lastId.get() == m.getId()))
 										lastId.set(m.getId());
 								}
+								if (m instanceof MulticastMessage) {
+									lastMulticastId.incrementAndGet();
+								}
 								System.out.println(m.getSrc() + "> msg" + m.getId() + " " + m.getData());
 							}
 						} else
@@ -390,7 +381,7 @@ public class MessagePasser implements MessagePasserApi {
 						String mk = sc.nextLine();
 						System.err.println("\nMessager> Input Message in 144 chars:");
 						String outMessage = sc.nextLine();
-						multicast(mk, outMessage);
+						multicast(mk, MulticastType.MESSAGE, outMessage);
 					} else {
 						System.err.println("Messager> Invalid input");
 					}
@@ -403,6 +394,26 @@ public class MessagePasser implements MessagePasserApi {
 				sc.close();
 			}
 		}
+		
+
+		private TimeStampMessage unicastMessage(String dest, String kind, Object data) {
+//			int id = lastId.incrementAndGet();
+//			TimeStamp ts = this.clock.getNewTimeStamp(localName);
+			TimeStampMessage msg = new TimeStampMessage(localName, dest, kind.toLowerCase(), data);
+//			msg.setId(id);
+//			msg.setTimeStamp(ts);
+			send(msg);
+			return msg;
+		}
+		
+		private void multicast(String kind, MulticastType type, Object data) {
+			for (String member : nodeList.keySet()) {
+				MulticastMessage message = new MulticastMessage(localName, localName, member, kind, type, data);
+				message.setMulticcastId(lastMulticastId.incrementAndGet());
+				send(message);
+			}
+		}
+
 
 	}
 }

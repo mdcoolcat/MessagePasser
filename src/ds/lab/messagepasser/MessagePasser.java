@@ -153,7 +153,6 @@ public class MessagePasser implements MessagePasserApi {
 		
 		TimeStamp ts=this.clock.getCurrentTimeStamp(localName);
 		message.setTimeStamp(ts);
-		System.out.println("prepare to send. My current ts: "+message.getTimeStamp());
 		RuleBean theRule = getMatchedSendRule(message);
 		MessageAction action;
 		if (theRule == null) {
@@ -218,8 +217,12 @@ public class MessagePasser implements MessagePasserApi {
 	}
 
 	private RuleBean getMatchedSendRule(TimeStampMessage tsm) {
-		ArrayList<RuleBean> rules = config.getSendRules();
+		ArrayList<RuleBean> rules = null;
 		RuleBean theRule = null;
+		synchronized (config) {
+			rules = config.getSendRules();
+		}
+		assert rules != null;
 		for (RuleBean r : rules) {
 			if (r.isMatch(tsm)) {
 				theRule = r;
@@ -238,6 +241,7 @@ public class MessagePasser implements MessagePasserApi {
 			return r.getAction();
 		return MessageAction.DEFAULT;
 	}
+
 	private void connectAndSend(TimeStampMessage tsm, boolean isDup) throws UnknownHostException, SocketException, IOException {
 		String dest = tsm.getDest();
 		//TODO setTimeStamp, or put it after building socket
@@ -259,89 +263,63 @@ public class MessagePasser implements MessagePasserApi {
 			clock.getNewTimeStamp(localName);
 		System.err.println("sent>>>>>>>>>msg"+tsm.getId() + " now my ts: " + tsm.getTimeStamp());
 	}
+	
 	@Override
 	public ArrayList<TimeStampMessage> receive() {
 		ArrayList<TimeStampMessage> incoming = null;
 		if (!inputQueue.isEmpty()) {
-			TimeStampMessage message = inputQueue.remove();// examine the 1st one
-			RuleBean theRule = getMatchedReceiveRule(message);
-			System.err.println(theRule);
-			MessageAction action;
-			if (theRule == null) {
-				action = MessageAction.DEFAULT;
-			} else {
-				action = theRule.getAction();
-				if (action != MessageAction.DEFAULT)
-					action = checkReceiveAction(theRule);
-			}
-			System.out.println(action);
-			try {
-				if (action != MessageAction.DEFAULT)
-					logger.log(message);
-				TimeStampMessage dup = null;
-				switch (action) {
-				case DROP:// drop message TODO lastId???
-					break;
-				case DELAY:// move the message to delayQUeue
-					delayInputQueue.add(message);
-					break;
-				case DUPLICATE:
-					rcvNthTracker.incrementAndGet(1);
-					dup = message.clone();// add to list later
-					dup.setId(message.getId());
-					// inputQueue.add(dup);
-				case DEFAULT:
-					// now there should be two identical messages to deliver.
-					// deliver delayed messages after the new one(s)
+//			RuleBean theRule = getMatchedReceiveRule(message);
+//			System.err.println(theRule);
+//			MessageAction action;
+//			if (theRule == null) {
+//				action = MessageAction.DEFAULT;
+//			} else {
+//				action = theRule.getAction();
+//				if (action != MessageAction.DEFAULT)
+//					action = checkReceiveAction(theRule);
+//			}
+//			System.out.println(action);
+//			try {
+//				if (action != MessageAction.DEFAULT)
+//					logger.log(message);
+//				TimeStampMessage dup = null;
+//				switch (action) {
+//				case DROP:// drop message TODO lastId???
+//					break;
+//				case DELAY:// move the message to delayQUeue
+//					delayInputQueue.add(message);
+//					break;
+//				case DUPLICATE:
+//					rcvNthTracker.incrementAndGet(1);
+//					dup = message.clone();// add to list later
+//					dup.setId(message.getId());
+//					dup.setTimeStamp(message.getTimeStamp());
+//					// inputQueue.add(dup);
+//				case DEFAULT:
+//					// now there should be two identical messages to deliver.
+//					// deliver delayed messages after the new one(s)
 					incoming = new ArrayList<TimeStampMessage>();
-					incoming.add(message);
-					if (dup != null)
-						incoming.add(dup);
-					synchronized (delayInputQueue) {
-						while (!delayInputQueue.isEmpty())
-							incoming.add(delayInputQueue.remove());
+					synchronized (inputQueue) {
+						TimeStampMessage message = inputQueue.remove();// examine the 1st one
+						incoming.add(message);
+						if (message.equals(inputQueue.peek()))	//check duplicate
+							incoming.add(inputQueue.remove());
 					}
-				}
+					
+					synchronized (delayInputQueue) {
+						while (!delayInputQueue.isEmpty()) {
+							TimeStampMessage m = delayInputQueue.remove();
+							//TODO 
+							incoming.add(m);
+						}
+					}
+//				}
 
-			} catch (CloneNotSupportedException e) {
-				e.printStackTrace();
-			}
+//			} catch (CloneNotSupportedException e) {
+//				e.printStackTrace();
+//			}
 		}
 		return incoming;
-	}
-
-	private RuleBean getMatchedReceiveRule(TimeStampMessage tsm) {
-		ArrayList<RuleBean> rules = config.getRcvRules();
-		RuleBean theRule = null;
-		for (RuleBean r : rules) {
-			if (r.isMatch(tsm)) {
-				theRule = r;
-				break;
-			}
-		}
-		return theRule;
-	}
-
-	private MessageAction checkReceiveAction(RuleBean r) {
-		if (r.hasNoRestriction())// if no specify nth or everyNth, ignore action
-									// field..
-			return r.getAction();
-		int now = rcvNthTracker.incrementAndGet(r.getActionIndex());// TODO
-																	// caution
-		if ((now == r.getNth()) || (r.getEveryNth() > 0 && (now % r.getEveryNth()) == 0))
-			return r.getAction();
-		return MessageAction.DEFAULT;
-	}
-
-	
-	
-	private String getLocalName()
-	{
-		return localName;
-	}
-	private String getConfigFileName()
-	{
-		return configFileName;
 	}
 
 	private void sendToLogger(LogLevel level, String msg) {
@@ -368,7 +346,7 @@ public class MessagePasser implements MessagePasserApi {
 					String msg = remote + " has connected to " + localName;
 					System.err.println("Listener> " + remote + " has connected you");
 					sendToLogger(LogLevel.INFO, msg);
-					new WorkerThread(connection, inputQueue, clock, ipNameMap.get(remote));
+					new WorkerThread(connection, inputQueue, delayInputQueue, rcvNthTracker, clock, config);
 				}
 			} catch (EOFException e) {//someone offline
 				String remote = e.getMessage();

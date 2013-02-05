@@ -43,20 +43,20 @@ public class Logger {
 	public Logger(String configurationFile) throws IOException {
 		config = new Config(configurationFile, localName);
 		MAX_THREAD = config.NUM_NODE;
-//		Scanner sc = new Scanner(System.in);
-//		System.err.println("Enter type of clock that you require for your application");
-//		System.out.println("0. Logical \t 1. Vector");
-//		String input = sc.nextLine().toLowerCase();
+		Scanner sc = new Scanner(System.in);
+		System.err.println("Enter type of clock that you require for your application");
+		System.out.println("0. Logical \t 1. Vector");
+		String input = sc.nextLine().toLowerCase();
 		int numOfNodes;
-//		if (input.equals("0") || input.equals("logical") || input.equals("l")) {
-//			clockid = 0;
-//			numOfNodes = 0;
-//			clock = ClockService.getClock(clockid, localName, numOfNodes, config.NODELIST);
-//		} else if (input.equals("1") || input.equals("vector") || input.equals("v")) {
-			int clockid = 1;
+		if (input.equals("0") || input.equals("logical") || input.equals("l")) {
+			clockid = 0;
+			numOfNodes = 0;
+			clock = ClockService.getClock(clockid, localName, numOfNodes, config.NODELIST);
+		} else if (input.equals("1") || input.equals("vector") || input.equals("v")) {
+			clockid = 1;
 			numOfNodes = MAX_THREAD;
 			clock = ClockService.getClock(clockid, localName, numOfNodes, config.NODELIST);
-//		}
+		}
 
 		nodeList = config.NODELIST;
 		/* build my listening socket */

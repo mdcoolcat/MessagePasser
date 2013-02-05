@@ -160,6 +160,7 @@ public class MessagePasser implements MessagePasserApi {
 			if (action != MessageAction.DEFAULT)
 				action = checkSendAction(theRule);
 		}
+		System.err.println("sendRule: " + action);
 		try {
 			if (action != MessageAction.DEFAULT)
 				logger.log(message);

@@ -42,6 +42,9 @@ public class Message implements Serializable, Cloneable {
 	public String getSrc() {
 		return header.src;
 	}
+	public void setSrc(String newSrc) {
+		header.src = newSrc;
+	}
 	public String getKind() {
 		return header.kind;
 	}

@@ -6,7 +6,6 @@ import java.io.ObjectInputStream;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.ListIterator;
 import java.util.concurrent.BlockingQueue;
@@ -84,9 +83,17 @@ public class WorkerThread implements Runnable {
 				if (message instanceof MulticastMessage) {
 					MulticastMessage multicast = (MulticastMessage) message;
 					System.out.println(multicast);
-					boolean isOrdered = checkTimeOrder(multicast);
-					if (isOrdered)
-						deliver(multicast, action);
+					if (multicast.getType() == MulticastType.MESSAGE) {
+						synchronized (holdbackQueue) {
+							if (!holdbackQueue.contains(multicast)) {
+								holdbackQueue.add(multicast);
+								Thread.sleep(500);//TODO
+							}
+						}
+						boolean isOrdered = checkTimeOrder(multicast);
+						if (isOrdered)
+							deliver(multicast, action);
+					}
 
 					checkAndAdd(multicast);
 				} else {// deliver normal msg TODO or when multicast
@@ -121,27 +128,19 @@ public class WorkerThread implements Runnable {
 		ackList.remove(multicast.getSrc());
 		switch (multicast.getType()) {
 		case MESSAGE:// TODO if have time, add duplicate
-			synchronized (holdbackQueue) {
-					holdbackQueue.add(multicast);
-					Thread.sleep(500);
-			}
 			// broadcast ack
 			MulticastMessage toSend = new MulticastMessage(multicast.getSrc(), localName, null, multicast.getKind(),
 					MulticastType.ACK, multicast.getData());
-			System.out.println("broadcast ack..." + holdbackQueue.size());
 			for (String peer : ackList) {
 				if (peer.equals(multicast.getSrc()))// don't send to source..
 					continue;
 				MulticastMessage ack = toSend.clone();
 				ack.setDest(peer);
 				mp.send(ack);
-				System.out.println(holdbackQueue.size());
 			}
 			break;
 		case ACK:
 			ackList.remove(multicast.getForward());
-			System.out.println("ack from " + multicast.getForward() + ". now " + ackList + " queue"
-					+ holdbackQueue.size());
 			if (!holdbackQueue.contains(multicast)) {
 				// i didn't get the message, send NACK TODO
 				System.out.println("I didn't get the meesage. Send NACK");

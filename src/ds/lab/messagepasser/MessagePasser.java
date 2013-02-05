@@ -267,7 +267,8 @@ public class MessagePasser implements MessagePasserApi {
 				TimeStampMessage message = inputQueue.remove();// examine the
 																// 1st one
 				incoming.add(message);
-				if (message.equals(inputQueue.peek())) // check duplicate
+				System.out.println(message);
+				if (!inputQueue.isEmpty() && message.equals(inputQueue.peek())) // check duplicate
 					incoming.add(inputQueue.remove());
 			}
 			synchronized (delayInputQueue) {

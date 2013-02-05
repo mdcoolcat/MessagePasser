@@ -160,7 +160,6 @@ public class Config {
 
 				keytype++;
 				} catch (NullPointerException e) {
-					System.out.println("no rule found");
 					continue;
 				}
 			}

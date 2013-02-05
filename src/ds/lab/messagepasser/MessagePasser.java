@@ -70,25 +70,25 @@ public class MessagePasser implements MessagePasserApi {
 		}
 		logger = new LoggerFacility(lg.getName(), lg.getIp(), lg.getPort());
 		nodeList.remove("logger");
-		Scanner sc = new Scanner(System.in);
-		System.err.println("Enter type of clock that you require for your application");
-		System.out.println("0. Logical \t 1. Vector");
-		String input=sc.nextLine().toLowerCase();
+//		Scanner sc = new Scanner(System.in);
+//		System.err.println("Enter type of clock that you require for your application");
+//		System.out.println("0. Logical \t 1. Vector");
+//		String input=sc.nextLine().toLowerCase();
 		int numOfNodes;
-		int clockid=0;
-		if(input.equals("0")||input.equals("logical")||input.equals("l"))
-		{
-		  	clockid=0;
-		  	numOfNodes=0;
-		  	clock = ClockService.getClock(clockid,localName,numOfNodes,nodeList);
-		}
-		else if(input.equals("1")||input.equals("vector")||input.equals("v"))
-		{
-		  	clockid=1;
+//		int clockid=0;
+//		if(input.equals("0")||input.equals("logical")||input.equals("l"))
+//		{
+//		  	clockid=0;
+//		  	numOfNodes=0;
+//		  	clock = ClockService.getClock(clockid,localName,numOfNodes,nodeList);
+//		}
+//		else if(input.equals("1")||input.equals("vector")||input.equals("v"))
+//		{
+		  int 	clockid=1;
 		  	numOfNodes=MAX_THREAD;
 		  	clock = ClockService.getClock(clockid,localName,numOfNodes,nodeList);
-		}
-		System.out.println("Clock selected:"+clockid);
+//		}
+//		System.out.println("Clock selected:"+clockid);
 	//	System.out.println(clock.getCurrentTimeStamp(localName).getVector().get(localName).get());
 		//TODO create logger
 		
@@ -151,7 +151,7 @@ public class MessagePasser implements MessagePasserApi {
 		
 		//TimeStampMessage tsm=new TimeStampMessage(message.getSrc(),message.getDest(),message.getKind(),message.getData());
 		
-		TimeStamp ts=this.clock.getCurrentTimeStamp(localName);
+		TimeStamp ts=this.clock.getNewTimeStamp(localName);//TODO keep same if ts
 		message.setTimeStamp(ts);
 		RuleBean theRule = getMatchedSendRule(message);
 		MessageAction action;
@@ -189,16 +189,16 @@ public class MessagePasser implements MessagePasserApi {
 				 * outputqueue.add(dup) isn't it ?? ----this needs count for sending the 2 message. if another thread adds one msg between them, you don't know which two should send...my opinion
 				 * RESOLVED-Added to the outputqueue
 				 */
-				connectAndSend(outputQueue.remove(), false);//send the original message
+				connectAndSend(outputQueue.remove());//send the original message
 				
 				  if (dup != null) {
 					  System.out.println("sending duplicate..");
-						connectAndSend(dup, true);
+						connectAndSend(dup);
 				  }
 				
 				synchronized (delayOutputQueue) {
 					while (!delayOutputQueue.isEmpty())
-						connectAndSend(delayOutputQueue.remove(), false);
+						connectAndSend(delayOutputQueue.remove());
 				}
 				
 			}
@@ -242,7 +242,7 @@ public class MessagePasser implements MessagePasserApi {
 		return MessageAction.DEFAULT;
 	}
 
-	private void connectAndSend(TimeStampMessage tsm, boolean isDup) throws UnknownHostException, SocketException, IOException {
+	private void connectAndSend(TimeStampMessage tsm) throws UnknownHostException, SocketException, IOException {
 		String dest = tsm.getDest();
 		//TODO setTimeStamp, or put it after building socket
 		//TimeStamp has to be appended before checking rules (seeAlso send(Message msg))
@@ -259,8 +259,6 @@ public class MessagePasser implements MessagePasserApi {
 		out.writeObject(tsm);
 		out.flush();
 		out.reset();
-		if (!isDup)//TODO do not update my ts if this is a dup msg
-			clock.getNewTimeStamp(localName);
 		System.err.println("sent>>>>>>>>>msg"+tsm.getId() + " now my ts: " + tsm.getTimeStamp());
 	}
 	

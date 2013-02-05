@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.ListIterator;
 import java.util.concurrent.BlockingQueue;
@@ -37,13 +37,13 @@ public class WorkerThread implements Runnable {
 	private ClockService clock;
 	private Config config;
 	private String localName;
-	private HashSet<String> ackList;// TODO need to change to hashMap of set
-									// later...
+	private HashMap<Integer,HashMap<String,Boolean>> ackList;//track ack
+	private final ArrayList<String> peers;//peer name
 	private MessagePasser mp;
 
-	public WorkerThread(MessagePasser mp, Socket connection, BlockingQueue<TimeStampMessage> inputQueue,
+	public WorkerThread(MessagePasser mp, Socket connection, ArrayList<String> peers, BlockingQueue<TimeStampMessage> inputQueue,
 			BlockingQueue<TimeStampMessage> delayInputQueue,  LinkedList<MulticastMessage> holdbackQueue, AtomicIntegerArray rcvNthTracker, ClockService clock,
-			Config config, HashSet<String> ackList) {
+			Config config, HashMap<Integer,HashMap<String,Boolean>> ackList) {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
@@ -54,6 +54,7 @@ public class WorkerThread implements Runnable {
 		this.config = config;
 		this.mp = mp;
 		this.ackList = ackList;
+		this.peers = peers;
 		new Thread(this).start();
 	}
 
@@ -82,11 +83,18 @@ public class WorkerThread implements Runnable {
 					continue;
 				if (message instanceof MulticastMessage) {
 					MulticastMessage multicast = (MulticastMessage) message;
-					System.out.println(multicast);
+					System.out.println("incoming<<< "+multicast);
 					if (multicast.getType() == MulticastType.MESSAGE) {
-						synchronized (holdbackQueue) {
-							if (!holdbackQueue.contains(multicast)) {
+						synchronized (this) {
+							if (!holdbackQueue.contains(multicast)) {//new incoming multicast msg, begin track ack
 								holdbackQueue.add(multicast);
+								HashMap<String, Boolean> acks = new HashMap<String, Boolean>();
+								for (String p : peers) {
+									if (p.equals(multicast.getSrc()))
+											continue;
+									acks.put(p, false);
+								}
+								ackList.put(multicast.getMulticcastId(), acks);
 								Thread.sleep(500);//TODO
 							}
 						}
@@ -125,35 +133,41 @@ public class WorkerThread implements Runnable {
 	 * @throws InterruptedException 
 	 */
 	synchronized private void checkAndAdd(MulticastMessage multicast) throws CloneNotSupportedException, InterruptedException {
-		ackList.remove(multicast.getSrc());
+		int theId = multicast.getMulticcastId();
+		HashMap<String, Boolean> myAck = ackList.get(theId);
+		System.out.println("checking --- current acklist: " + myAck);
 		switch (multicast.getType()) {
 		case MESSAGE:// TODO if have time, add duplicate
 			// broadcast ack
-			MulticastMessage toSend = new MulticastMessage(multicast.getSrc(), localName, null, multicast.getKind(),
+			MulticastMessage toAck = new MulticastMessage(theId, multicast.getSrc(), localName, null, "ack",
 					MulticastType.ACK, multicast.getData());
-			for (String peer : ackList) {
-				if (peer.equals(multicast.getSrc()))// don't send to source..
-					continue;
-				MulticastMessage ack = toSend.clone();
+			for (String peer : myAck.keySet()) {
+				MulticastMessage ack = toAck.clone();
 				ack.setDest(peer);
 				mp.send(ack);
 			}
 			break;
-		case ACK:
-			ackList.remove(multicast.getForward());
+		case ACK://may be dropped by rule before enter this; or duplicate ack, fine
+			String from = multicast.getForward();
+			myAck.put(from, true);
 			if (!holdbackQueue.contains(multicast)) {
 				// i didn't get the message, send NACK TODO
 				System.out.println("I didn't get the meesage. Send NACK");
-				mp.send(new MulticastMessage(multicast.getSrc(), localName, multicast.getForward(), null,
+				mp.send(new MulticastMessage(theId, multicast.getSrc(), localName, from, "nack",
 						MulticastType.NACK, null));// src, myname, from..
 			} else {
-				if (ackList.isEmpty()) {// TODO and order preserved
-					// remove from holdbackQueue
+				boolean allRcv = true;
+				for (boolean b : myAck.values()) {
+					if (!b) {
+						allRcv = false;
+						break;
+					}
+				}
+				if (allRcv) {// TODO and order preserved
 					holdbackQueue.remove(multicast);
 					System.out.println("all received");
-				} else {
-					System.out.println("not all ack rcved..");
-				}
+					ackList.remove(theId);
+				} 
 			}
 			break;
 		case NACK:// this msg.forward didn't get message
@@ -180,6 +194,7 @@ public class WorkerThread implements Runnable {
 			}
 			break;
 		}
+		System.out.println("after checking --- current acklist: " + ackList.get(theId));
 
 	}
 

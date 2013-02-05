@@ -10,6 +10,7 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.NoSuchElementException;
 import java.util.Scanner;
@@ -44,8 +45,8 @@ public class MessagePasser implements MessagePasserApi {
 	private String localName;
 	private String configFileName;
 	private HashMap<String, String> ipNameMap; // for reverse lookup by ip, <ip,
-	private HashSet<String> peerNames;
-												// name>
+	private HashMap<Integer, HashMap<String, Boolean>> ackList;
+	private ArrayList<String> peers;
 	private AtomicIntegerArray sendNthTracker;
 	private AtomicIntegerArray rcvNthTracker;
 	private AtomicInteger lastId;
@@ -94,12 +95,13 @@ public class MessagePasser implements MessagePasserApi {
 		lastMulticastId = new AtomicInteger(-1);
 		nodeList.remove(localName);
 		ipNameMap = new HashMap<String, String>();
-		peerNames = new HashSet<String>();
+		ackList = new HashMap<Integer, HashMap<String,Boolean>>();
+		peers = new ArrayList<String>();
 		for (NodeBean n : nodeList.values()) {
 			ipNameMap.put(n.getIp(), n.getName());
-			peerNames.add(n.getName());
+			peers.add(n.getName());
 		}
-		System.out.println(peerNames);
+		System.out.println("my peers: " + peers);
 		/* queues and trackers */
 		inputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		outputQueue = new LinkedBlockingDeque<TimeStampMessage>();
@@ -255,7 +257,7 @@ public class MessagePasser implements MessagePasserApi {
 		out.writeObject(tsm);
 		out.flush();
 		out.reset();
-		System.err.println("sent>>>>>>>>> "+ (MulticastMessage)tsm);
+		System.err.println("sent>>>>>>>>> "+ tsm);
 	}
 
 	@Override
@@ -267,7 +269,6 @@ public class MessagePasser implements MessagePasserApi {
 				TimeStampMessage message = inputQueue.remove();// examine the
 																// 1st one
 				incoming.add(message);
-				System.out.println(message);
 				if (!inputQueue.isEmpty() && message.equals(inputQueue.peek())) // check duplicate
 					incoming.add(inputQueue.remove());
 			}
@@ -310,7 +311,7 @@ public class MessagePasser implements MessagePasserApi {
 					assert connection.isConnected();
 					String remote = connection.getInetAddress().getHostAddress();
 					sendToLogger(LogLevel.INFO, remote + " has connected to " + localName);
-					new WorkerThread(mp, connection, inputQueue, delayInputQueue, holdbackQueue, rcvNthTracker, clock, config, peerNames);
+					new WorkerThread(mp, connection, peers, inputQueue, delayInputQueue, holdbackQueue, rcvNthTracker, clock, config, ackList);
 				}
 			} catch (EOFException e) {// someone offline
 				String remote = e.getMessage();
@@ -375,7 +376,7 @@ public class MessagePasser implements MessagePasserApi {
 								if (m instanceof MulticastMessage) {
 									lastMulticastId.incrementAndGet();
 								}
-								System.out.println(m.getSrc() + "> msg" + m.getId() + " " + m.getData());
+								System.out.println(m.getSrc() + "> " + m + " " + m.getData());
 							}
 						} else
 							System.err.println("Messager> no message");
@@ -407,7 +408,7 @@ public class MessagePasser implements MessagePasserApi {
 		
 		private void multicast(String kind, MulticastType type, Object data) {
 			int id = lastMulticastId.incrementAndGet();
-			for (String member : peerNames) {
+			for (String member : peers) {
 				MulticastMessage message = new MulticastMessage(localName, localName, member, kind, type, data);
 				message.setMulticcastId(id);
 				send(message);

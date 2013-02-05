@@ -22,6 +22,7 @@ import ds.lab.bean.TimeStamp;
 import ds.lab.log.LogLevel;
 import ds.lab.log.LoggerFacility;
 import ds.lab.message.MessageAction;
+import ds.lab.message.MulticastMessage;
 import ds.lab.message.TimeStampMessage;
 
 public class MessagePasser implements MessagePasserApi {
@@ -38,7 +39,8 @@ public class MessagePasser implements MessagePasserApi {
 	/** other local information */
 	private String localName;
 	private String configFileName;
-	private HashMap<String, String> ipNameMap;	//for reverse lookup by ip, <ip, name>
+	private HashMap<String, String> ipNameMap; // for reverse lookup by ip, <ip,
+												// name>
 	private AtomicIntegerArray sendNthTracker;
 	private AtomicIntegerArray rcvNthTracker;
 	private AtomicInteger lastId;
@@ -61,8 +63,8 @@ public class MessagePasser implements MessagePasserApi {
 	public MessagePasser(String configurationFile, String localName) throws IOException {
 		config = new Config(configurationFile, localName);
 		MAX_THREAD = config.NUM_NODE;
-		//TODO create ClockService instance
-		nodeList =config.NODELIST;
+		// TODO create ClockService instance
+		nodeList = config.NODELIST;
 		/* logger */
 		NodeBean lg = nodeList.get("logger");
 		if (lg == null) {
@@ -70,40 +72,23 @@ public class MessagePasser implements MessagePasserApi {
 		}
 		logger = new LoggerFacility(lg.getName(), lg.getIp(), lg.getPort());
 		nodeList.remove("logger");
-//		Scanner sc = new Scanner(System.in);
-//		System.err.println("Enter type of clock that you require for your application");
-//		System.out.println("0. Logical \t 1. Vector");
-//		String input=sc.nextLine().toLowerCase();
 		int numOfNodes;
-//		int clockid=0;
-//		if(input.equals("0")||input.equals("logical")||input.equals("l"))
-//		{
-//		  	clockid=0;
-//		  	numOfNodes=0;
-//		  	clock = ClockService.getClock(clockid,localName,numOfNodes,nodeList);
-//		}
-//		else if(input.equals("1")||input.equals("vector")||input.equals("v"))
-//		{
-		  int 	clockid=1;
-		  	numOfNodes=MAX_THREAD;
-		  	clock = ClockService.getClock(clockid,localName,numOfNodes,nodeList);
-//		}
-//		System.out.println("Clock selected:"+clockid);
-	//	System.out.println(clock.getCurrentTimeStamp(localName).getVector().get(localName).get());
-		//TODO create logger
-		
+		int clockid = 1;
+		numOfNodes = MAX_THREAD;
+		clock = ClockService.getClock(clockid, localName, numOfNodes, nodeList);
+
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {
 			throw new IllegalArgumentException("Error local name");
 		}
 		this.localName = localName;
-		this.configFileName=configurationFile;
+		this.configFileName = configurationFile;
 		lastId = new AtomicInteger(-1);
 		ipNameMap = new HashMap<String, String>();
 		for (NodeBean n : nodeList.values())
 			ipNameMap.put(n.getIp(), n.getName());
-
+		nodeList.remove(me);
 		/* queues and trackers */
 		inputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		outputQueue = new LinkedBlockingDeque<TimeStampMessage>();
@@ -127,7 +112,7 @@ public class MessagePasser implements MessagePasserApi {
 	 *            local name of this node
 	 */
 	public static void main(String argv[]) {
-		
+
 		if (argv.length < 2) {
 			System.out.println("Usage: configFile localName");
 			System.exit(0);
@@ -140,19 +125,38 @@ public class MessagePasser implements MessagePasserApi {
 			e.printStackTrace();
 		}
 	}
-	
 
+	private TimeStampMessage unicastMessage(String dest, String kind, Object data) {
+		int id = lastId.incrementAndGet();
+		TimeStamp ts = this.clock.getNewTimeStamp(localName);
+		TimeStampMessage msg = new TimeStampMessage(localName, dest, kind.toLowerCase(), data);
+		msg.setId(id);
+		msg.setTimeStamp(ts);
+		send(msg);
+		return msg;
+	}
+	
+	private void multicast(String kind, Object data) {
+		int id = lastId.incrementAndGet();
+		TimeStamp ts = this.clock.getNewTimeStamp(localName);
+		for (String peer : nodeList.keySet()) {
+			MulticastMessage message = new MulticastMessage(localName, peer, kind, data);
+			message.setId(id);
+			message.setTimeStamp(ts);
+			send(message);
+		}
+	}
+	
 	@Override
 	public void send(TimeStampMessage message) {
-		// TODO sync message id
-		message.setId(lastId.incrementAndGet());
-		//TODO: We should convert the message to timestampmessage type here
-		//because even the messaages of kind drop should have a timestamp.
-		
-		//TimeStampMessage tsm=new TimeStampMessage(message.getSrc(),message.getDest(),message.getKind(),message.getData());
-		
-		TimeStamp ts=this.clock.getNewTimeStamp(localName);//TODO keep same if ts
-		message.setTimeStamp(ts);
+//		if (!isMulticast) {// multicast message already set...
+//			message.setId(lastId.incrementAndGet());// TODO keep same if multi?
+//			// TODO: We should convert the message to timestampmessage type here
+//			TimeStamp ts = this.clock.getNewTimeStamp(localName);// TODO keep
+//																	// same if
+//																	// multi?
+//			message.setTimeStamp(ts);
+//		}
 		RuleBean theRule = getMatchedSendRule(message);
 		MessageAction action;
 		if (theRule == null) {
@@ -172,7 +176,7 @@ public class MessagePasser implements MessagePasserApi {
 				message = null;
 				break;
 			case DELAY:
-				
+
 				delayOutputQueue.add(message);// don't send
 				break;
 			case DUPLICATE:
@@ -180,27 +184,31 @@ public class MessagePasser implements MessagePasserApi {
 				dup = message.clone();
 				dup.setId(message.getId());
 				dup.setTimeStamp(message.getTimeStamp());
-				
+
 			case DEFAULT:
 				outputQueue.add(message);
-				// now there should be two identical messages. Send delayed after normal
+				// now there should be two identical messages. Send delayed
+				// after normal
 				/*
 				 * The dup should be added to outputqueue by
-				 * outputqueue.add(dup) isn't it ?? ----this needs count for sending the 2 message. if another thread adds one msg between them, you don't know which two should send...my opinion
+				 * outputqueue.add(dup) isn't it ?? ----this needs count for
+				 * sending the 2 message. if another thread adds one msg between
+				 * them, you don't know which two should send...my opinion
 				 * RESOLVED-Added to the outputqueue
 				 */
-				connectAndSend(outputQueue.remove());//send the original message
-				
-				  if (dup != null) {
-					  System.out.println("sending duplicate..");
-						connectAndSend(dup);
-				  }
-				
+				connectAndSend(outputQueue.remove());// send the original
+														// message
+
+				if (dup != null) {
+					System.out.println("sending duplicate..");
+					connectAndSend(dup);
+				}
+
 				synchronized (delayOutputQueue) {
 					while (!delayOutputQueue.isEmpty())
 						connectAndSend(delayOutputQueue.remove());
 				}
-				
+
 			}
 		} catch (UnknownHostException e) {
 			System.err.println("Messager> " + e.getMessage());
@@ -244,11 +252,13 @@ public class MessagePasser implements MessagePasserApi {
 
 	private void connectAndSend(TimeStampMessage tsm) throws UnknownHostException, SocketException, IOException {
 		String dest = tsm.getDest();
-		//TODO setTimeStamp, or put it after building socket
-		//TimeStamp has to be appended before checking rules (seeAlso send(Message msg))
-		
+		// TODO setTimeStamp, or put it after building socket
+		// TimeStamp has to be appended before checking rules (seeAlso
+		// send(Message msg))
+
 		ObjectOutputStream out = outStreamMap.get(dest);
-		if (out == null) {// no socket connection yet, create it TODO if port change...
+		if (out == null) {// no socket connection yet, create it TODO if port
+							// change...
 			NodeBean n = nodeList.get(dest);
 			if (n == null)
 				throw new UnknownHostException("Message Send fails: unknown host " + dest);
@@ -259,70 +269,35 @@ public class MessagePasser implements MessagePasserApi {
 		out.writeObject(tsm);
 		out.flush();
 		out.reset();
-		System.err.println("sent>>>>>>>>>msg"+tsm.getId() + " now my ts: " + tsm.getTimeStamp());
+		System.err.println("sent>>>>>>>>>msg" + tsm.getId() + " now my ts: " + tsm.getTimeStamp());
 	}
-	
+
 	@Override
 	public ArrayList<TimeStampMessage> receive() {
 		ArrayList<TimeStampMessage> incoming = null;
 		if (!inputQueue.isEmpty()) {
-//			RuleBean theRule = getMatchedReceiveRule(message);
-//			System.err.println(theRule);
-//			MessageAction action;
-//			if (theRule == null) {
-//				action = MessageAction.DEFAULT;
-//			} else {
-//				action = theRule.getAction();
-//				if (action != MessageAction.DEFAULT)
-//					action = checkReceiveAction(theRule);
-//			}
-//			System.out.println(action);
-//			try {
-//				if (action != MessageAction.DEFAULT)
-//					logger.log(message);
-//				TimeStampMessage dup = null;
-//				switch (action) {
-//				case DROP:// drop message TODO lastId???
-//					break;
-//				case DELAY:// move the message to delayQUeue
-//					delayInputQueue.add(message);
-//					break;
-//				case DUPLICATE:
-//					rcvNthTracker.incrementAndGet(1);
-//					dup = message.clone();// add to list later
-//					dup.setId(message.getId());
-//					dup.setTimeStamp(message.getTimeStamp());
-//					// inputQueue.add(dup);
-//				case DEFAULT:
-//					// now there should be two identical messages to deliver.
-//					// deliver delayed messages after the new one(s)
-					incoming = new ArrayList<TimeStampMessage>();
-					synchronized (inputQueue) {
-						TimeStampMessage message = inputQueue.remove();// examine the 1st one
-						incoming.add(message);
-						if (message.equals(inputQueue.peek()))	//check duplicate
-							incoming.add(inputQueue.remove());
-					}
-					
-					synchronized (delayInputQueue) {
-						while (!delayInputQueue.isEmpty()) {
-							TimeStampMessage m = delayInputQueue.remove();
-							//TODO 
-							incoming.add(m);
-						}
-					}
-//				}
-
-//			} catch (CloneNotSupportedException e) {
-//				e.printStackTrace();
-//			}
+			incoming = new ArrayList<TimeStampMessage>();
+			synchronized (inputQueue) {
+				TimeStampMessage message = inputQueue.remove();// examine the
+																// 1st one
+				incoming.add(message);
+				if (message.equals(inputQueue.peek())) // check duplicate
+					incoming.add(inputQueue.remove());
+			}
+			synchronized (delayInputQueue) {
+				while (!delayInputQueue.isEmpty()) {
+					TimeStampMessage m = delayInputQueue.remove();
+					// TODO
+					incoming.add(m);
+				}
+			}
 		}
 		return incoming;
 	}
 
 	private void sendToLogger(LogLevel level, String msg) {
 		TimeStampMessage tsMesseage = new TimeStampMessage(localName, "logger", level.toString(), msg);
-		tsMesseage.setTimeStamp(clock.getCurrentTimeStamp(localName));	//not sure should use this clock method or other ones
+		tsMesseage.setTimeStamp(clock.getCurrentTimeStamp(localName));
 		logger.log(tsMesseage);
 	}
 
@@ -338,7 +313,7 @@ public class MessagePasser implements MessagePasserApi {
 			try {
 				while (true) {
 					Socket connection = listenSocket.accept();
-//					 connection.setKeepAlive(true);
+					// connection.setKeepAlive(true);
 					assert connection.isConnected();
 					String remote = connection.getInetAddress().getHostAddress();
 					String msg = remote + " has connected to " + localName;
@@ -346,7 +321,7 @@ public class MessagePasser implements MessagePasserApi {
 					sendToLogger(LogLevel.INFO, msg);
 					new WorkerThread(connection, inputQueue, delayInputQueue, rcvNthTracker, clock, config);
 				}
-			} catch (EOFException e) {//someone offline
+			} catch (EOFException e) {// someone offline
 				String remote = e.getMessage();
 				System.err.println("Messager> " + remote + " went offline");
 				try {
@@ -365,7 +340,7 @@ public class MessagePasser implements MessagePasserApi {
 
 	/**
 	 * Responsible for interating with user: send or receive
-	 *
+	 * 
 	 * @author dmei
 	 * 
 	 */
@@ -375,12 +350,10 @@ public class MessagePasser implements MessagePasserApi {
 			Scanner sc = null;
 			try {
 				while (true) {
-					System.err.println("Messager> Choose: 0. Send(S)\t1. Receive(R)");
+					System.err.println("Messager> Choose: 0. Send(S)\t1. Receive(R)\t2. Multicast(M)");
 					sc = new Scanner(System.in);
 					String input = sc.nextLine().toLowerCase();
 					if (input.equals("0") || input.equals("send") || input.equals("s")) {
-						//callToParseAgain(getLocalName(),getConfigFileName());   ....this is already called in the 
-						                         //getsendrules and getreceiverules functions, so no need to call again from here
 						System.err.print("Messager> TO: ");
 						for (String name : nodeList.keySet()) {
 							if (name.equals(localName))// skip self
@@ -392,41 +365,44 @@ public class MessagePasser implements MessagePasserApi {
 						String mk = sc.nextLine();
 						System.err.println("\nMessager> Input Message in 144 chars:");
 						String outMessage = sc.nextLine();
-						TimeStampMessage sentMsg = sendMessage(dest, mk, outMessage);//TODO may block?
+						TimeStampMessage sentMsg = unicastMessage(dest, mk, outMessage);// TODO
+																						// may
+																						// block?
 						System.out.println("\nMessager> Do you want to log this message? Y/N");
 						String ifLog = sc.nextLine();
 						if (ifLog.equalsIgnoreCase("Y"))
 							logger.log(sentMsg);
 
-					} else if (input.equals("1") || input.equals("receive") || input.equals("r")) {
+					} else if (input.equals("1") || input.equalsIgnoreCase("receive") || input.equals("r")) {
 						ArrayList<TimeStampMessage> incoming = receive();
 						if (incoming != null) {
 							for (TimeStampMessage m : incoming) {
 								synchronized (lastId) {
-									if ((lastId.get() <  m.getId())||(lastId.get() ==  m.getId()))
+									if ((lastId.get() < m.getId()) || (lastId.get() == m.getId()))
 										lastId.set(m.getId());
 								}
-								System.out.println(m.getSrc() + "> msg" + m.getId()+" "+m.getData());
+								System.out.println(m.getSrc() + "> msg" + m.getId() + " " + m.getData());
 							}
 						} else
 							System.err.println("Messager> no message");
+					} else if (input.equals("2") || input.equalsIgnoreCase("multicast") || input.equals("m")) {
+						System.out.println("\nMessager> Enter kind of the message:");
+						String mk = sc.nextLine();
+						System.err.println("\nMessager> Input Message in 144 chars:");
+						String outMessage = sc.nextLine();
+						multicast(mk, outMessage);
 					} else {
 						System.err.println("Messager> Invalid input");
 					}
 				}
 			} catch (NoSuchElementException e) {
 				String msg = "Messager> User press CTRL+C. Bye!";
-//				System.err.println(msg);
+				// System.err.println(msg);
 				sendToLogger(LogLevel.WARNING, msg);
 			} finally {
 				sc.close();
 			}
 		}
 
-		private TimeStampMessage sendMessage(String dest, String kind, Object data) {
-			TimeStampMessage msg = new TimeStampMessage(localName, dest, kind.toLowerCase(), data);
-			send(msg);
-			return msg;
-		}
 	}
 }

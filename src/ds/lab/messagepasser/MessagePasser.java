@@ -9,6 +9,8 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.concurrent.BlockingQueue;
@@ -37,11 +39,12 @@ public class MessagePasser implements MessagePasserApi {
 	private BlockingQueue<TimeStampMessage> outputQueue; // output queue
 	private BlockingQueue<TimeStampMessage> delayInputQueue; // input queue
 	private BlockingQueue<TimeStampMessage> delayOutputQueue; // output queue
+	private LinkedList<MulticastMessage> holdbackQueue;
 	/** other local information */
 	private String localName;
 	private String configFileName;
 	private HashMap<String, String> ipNameMap; // for reverse lookup by ip, <ip,
-	private ArrayList<String> peerNames;
+	private HashSet<String> peerNames;
 												// name>
 	private AtomicIntegerArray sendNthTracker;
 	private AtomicIntegerArray rcvNthTracker;
@@ -89,18 +92,20 @@ public class MessagePasser implements MessagePasserApi {
 		this.configFileName = configurationFile;
 		lastId = new AtomicInteger(-1);
 		lastMulticastId = new AtomicInteger(-1);
-		nodeList.remove(me);
+		nodeList.remove(localName);
 		ipNameMap = new HashMap<String, String>();
-		peerNames = new ArrayList<String>();
+		peerNames = new HashSet<String>();
 		for (NodeBean n : nodeList.values()) {
 			ipNameMap.put(n.getIp(), n.getName());
 			peerNames.add(n.getName());
 		}
+		System.out.println(peerNames);
 		/* queues and trackers */
 		inputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		outputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		delayInputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		delayOutputQueue = new LinkedBlockingDeque<TimeStampMessage>();
+		holdbackQueue = new LinkedList<MulticastMessage>();
 		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		/* listener */
@@ -134,7 +139,8 @@ public class MessagePasser implements MessagePasserApi {
 	}
 	
 	@Override
-	public void send(TimeStampMessage message) {
+	synchronized public void send(TimeStampMessage message) {
+		assert message.getDest() != null;
 //		if (!isMulticast) {// multicast message already set...
 			message.setId(lastId.incrementAndGet());// TODO keep same if multi?
 			// TODO: We should convert the message to timestampmessage type here
@@ -152,7 +158,6 @@ public class MessagePasser implements MessagePasserApi {
 			if (action != MessageAction.DEFAULT)
 				action = checkSendAction(theRule);
 		}
-		System.out.println(action);
 		try {
 			if (action != MessageAction.DEFAULT)
 				logger.log(message);
@@ -186,7 +191,6 @@ public class MessagePasser implements MessagePasserApi {
 														// message
 
 				if (dup != null) {
-					System.out.println("sending duplicate..");
 					connectAndSend(dup);
 				}
 
@@ -251,7 +255,7 @@ public class MessagePasser implements MessagePasserApi {
 		out.writeObject(tsm);
 		out.flush();
 		out.reset();
-		System.err.println("sent>>>>>>>>>msg" + tsm.getId() + " now my ts: " + tsm.getTimeStamp());
+		System.err.println("sent>>>>>>>>> "+ (MulticastMessage)tsm);
 	}
 
 	@Override
@@ -304,10 +308,8 @@ public class MessagePasser implements MessagePasserApi {
 					// connection.setKeepAlive(true);
 					assert connection.isConnected();
 					String remote = connection.getInetAddress().getHostAddress();
-					String msg = remote + " has connected to " + localName;
-					System.err.println("Listener> " + remote + " has connected you");
-					sendToLogger(LogLevel.INFO, msg);
-					new WorkerThread(mp, connection, inputQueue, delayInputQueue, rcvNthTracker, clock, config, peerNames);
+					sendToLogger(LogLevel.INFO, remote + " has connected to " + localName);
+					new WorkerThread(mp, connection, inputQueue, delayInputQueue, holdbackQueue, rcvNthTracker, clock, config, peerNames);
 				}
 			} catch (EOFException e) {// someone offline
 				String remote = e.getMessage();
@@ -397,19 +399,16 @@ public class MessagePasser implements MessagePasserApi {
 		
 
 		private TimeStampMessage unicastMessage(String dest, String kind, Object data) {
-//			int id = lastId.incrementAndGet();
-//			TimeStamp ts = this.clock.getNewTimeStamp(localName);
 			TimeStampMessage msg = new TimeStampMessage(localName, dest, kind.toLowerCase(), data);
-//			msg.setId(id);
-//			msg.setTimeStamp(ts);
 			send(msg);
 			return msg;
 		}
 		
 		private void multicast(String kind, MulticastType type, Object data) {
-			for (String member : nodeList.keySet()) {
+			int id = lastMulticastId.incrementAndGet();
+			for (String member : peerNames) {
 				MulticastMessage message = new MulticastMessage(localName, localName, member, kind, type, data);
-				message.setMulticcastId(lastMulticastId.incrementAndGet());
+				message.setMulticcastId(id);
 				send(message);
 			}
 		}

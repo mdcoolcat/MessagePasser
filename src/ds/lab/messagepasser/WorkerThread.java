@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.ListIterator;
@@ -13,6 +14,7 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import ds.lab.bean.RuleBean;
 import ds.lab.bean.TimeStamp;
+import ds.lab.message.Message;
 import ds.lab.message.MessageAction;
 import ds.lab.message.MulticastMessage;
 import ds.lab.message.MulticastType;
@@ -36,24 +38,23 @@ public class WorkerThread implements Runnable {
 	private ClockService clock;
 	private Config config;
 	private String localName;
-	private Hashtable<String, Boolean> ackMap;
+	private HashSet<String> ackList;// TODO need to change to hashMap of set
+									// later...
 	private MessagePasser mp;
 
 	public WorkerThread(MessagePasser mp, Socket connection, BlockingQueue<TimeStampMessage> inputQueue,
-			BlockingQueue<TimeStampMessage> delayInputQueue, AtomicIntegerArray rcvNthTracker, ClockService clock,
-			Config config, ArrayList<String> peerNames) {
+			BlockingQueue<TimeStampMessage> delayInputQueue,  LinkedList<MulticastMessage> holdbackQueue, AtomicIntegerArray rcvNthTracker, ClockService clock,
+			Config config, HashSet<String> ackList) {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
 		this.delayInputQueue = delayInputQueue;
-		this.holdbackQueue = new LinkedList<MulticastMessage>();
+		this.holdbackQueue = holdbackQueue;
 		this.rcvNthTracker = rcvNthTracker;
 		this.clock = clock;
 		this.config = config;
 		this.mp = mp;
-		this.ackMap = new Hashtable<String, Boolean>();
-		for (String name : peerNames)
-			this.ackMap.put(name, false);
+		this.ackList = ackList;
 		new Thread(this).start();
 	}
 
@@ -62,30 +63,38 @@ public class WorkerThread implements Runnable {
 		try {
 			in = new ObjectInputStream(connection.getInputStream());
 			while (true) {
-				// rcved = in.readObject();
-				TimeStampMessage message = (TimeStampMessage) in.readObject();
-				if (message.getData() == null) {
-					System.err.println("Messager> " + connection.getInetAddress().getHostAddress() + " went offline");
-				} else {
-					this.localName = message.getDest();
-					synchronized (clock) {
-//						System.out.println(" my current ts: " + clock.getCurrentTimeStamp(message.getDest()));
-						TimeStamp ts = clock.updateTimeStampOnReceive(message.getDest(), message);
-					}
-					System.out.println("after receive() my ts: " + clock.getCurrentTimeStamp(message.getDest()));
-					MessageAction action = checkReceiveRule(message);
-					if (action == MessageAction.DROP || action == MessageAction.DELAY)
-						continue;
-					if (message instanceof MulticastMessage) {
-						MulticastMessage multicast = (MulticastMessage) message;
-						checkAndAdd(multicast);
+				Message tmp = (Message) in.readObject();
+				// if (tmp.getData() == null) {
+				// System.err.println("Messager> " + tmp.getSrc() +
+				// " went offline");
+				// } else {
+				assert tmp instanceof TimeStampMessage;
+				TimeStampMessage message = (TimeStampMessage) tmp;
+				this.localName = message.getDest();
+				synchronized (clock) {
+					// System.out.println(" my current ts: " +
+					// clock.getCurrentTimeStamp(message.getDest()));
+					TimeStamp ts = clock.updateTimeStampOnReceive(message.getDest(), message);
+				}
+				// System.out.println("after receive() my ts: " +
+				// clock.getCurrentTimeStamp(message.getDest()));
+				MessageAction action = checkReceiveRule(message);
+				if (action == MessageAction.DROP || action == MessageAction.DELAY)
+					continue;
+				if (message instanceof MulticastMessage) {
+					MulticastMessage multicast = (MulticastMessage) message;
+					System.out.println(multicast);
+					boolean isOrdered = checkTimeOrder(multicast);
+					if (isOrdered)
+						deliver(multicast, action);
 
-					} else {// deliver normal msg TODO or when multicast
-							// indicate can deliver..
-						deliver(message, action);
-					}
+					checkAndAdd(multicast);
+				} else {// deliver normal msg TODO or when multicast
+					System.out.println("normal msg");
+					deliver(message, action);
 				}
 			}
+			// }
 
 		} catch (EOFException e) {
 			try {
@@ -106,57 +115,82 @@ public class WorkerThread implements Runnable {
 	 * 
 	 * @param multicast
 	 * @throws CloneNotSupportedException
+	 * @throws InterruptedException 
 	 */
-	private void checkAndAdd(MulticastMessage multicast) throws CloneNotSupportedException {
-		System.out.println(multicast);
+	synchronized private void checkAndAdd(MulticastMessage multicast) throws CloneNotSupportedException, InterruptedException {
+		ackList.remove(multicast.getSrc());
 		switch (multicast.getType()) {
-		case MESSAGE:// TODO should be new message...if have time, add duplicate
-						// detect
-			holdbackQueue.add(multicast);
-			// TODO when to deliver
-			//broadcast ack TODO perhaps should clone..
-			multicast.setType(MulticastType.ACK);
-			multicast.setForward(localName);
-			System.out.println("broadcast ack...");
-			for (String peer : ackMap.keySet()) {
-				multicast.setDest(peer);
-				mp.send(multicast);
+		case MESSAGE:// TODO if have time, add duplicate
+			synchronized (holdbackQueue) {
+					holdbackQueue.add(multicast);
+					Thread.sleep(500);
+			}
+			// broadcast ack
+			MulticastMessage toSend = new MulticastMessage(multicast.getSrc(), localName, null, multicast.getKind(),
+					MulticastType.ACK, multicast.getData());
+			System.out.println("broadcast ack..." + holdbackQueue.size());
+			for (String peer : ackList) {
+				if (peer.equals(multicast.getSrc()))// don't send to source..
+					continue;
+				MulticastMessage ack = toSend.clone();
+				ack.setDest(peer);
+				mp.send(ack);
+				System.out.println(holdbackQueue.size());
 			}
 			break;
 		case ACK:
-			ackMap.put(multicast.getForward(), true);
+			ackList.remove(multicast.getForward());
+			System.out.println("ack from " + multicast.getForward() + ". now " + ackList + " queue"
+					+ holdbackQueue.size());
 			if (!holdbackQueue.contains(multicast)) {
 				// i didn't get the message, send NACK TODO
 				System.out.println("I didn't get the meesage. Send NACK");
 				mp.send(new MulticastMessage(multicast.getSrc(), localName, multicast.getForward(), null,
-						MulticastType.NACK, null));//src, myname, from..
-			}
-			break;
-		case NACK://this msg.forward didn't get message
-			assert !holdbackQueue.isEmpty();
-			MulticastMessage toForward = null;
-			ListIterator<MulticastMessage> it = holdbackQueue.listIterator();
-			while (it.hasNext()) {
-				MulticastMessage tmp = it.next();
-				if (tmp.equals(multicast)) {
-					toForward = tmp;
-					break;
+						MulticastType.NACK, null));// src, myname, from..
+			} else {
+				if (ackList.isEmpty()) {// TODO and order preserved
+					// remove from holdbackQueue
+					holdbackQueue.remove(multicast);
+					System.out.println("all received");
+				} else {
+					System.out.println("not all ack rcved..");
 				}
 			}
-//			assert toForward != null;
-//			MulticastMessage theForward = new MulticastMessage(toForward.getSrc(), localName, toForward.getForward(), toForward.getKind(),
-//					MulticastType.MESSAGE, toForward.getData());
-//			theForward.setId(toForward.getId());//change ID???
-//			theForward.setMulticcastId(toForward.getMulticcastId());
-			toForward.setForward(localName);
-			mp.send(toForward);//src, myname, from..TODO clone?
+			break;
+		case NACK:// this msg.forward didn't get message
+			if (holdbackQueue.isEmpty()) {
+				System.err.println("sequence wrong. they already ack, no need to forward.");
+			} else {
+				MulticastMessage toForward = null;
+				ListIterator<MulticastMessage> it = holdbackQueue.listIterator();
+				while (it.hasNext()) {
+					MulticastMessage tmp = it.next();
+					if (tmp.equals(multicast)) {
+						toForward = tmp;
+						break;
+					}
+				}
+				if (toForward != null) {
+					MulticastMessage theForward = toForward.clone();
+					theForward.setForward(localName);
+					theForward.setDest(multicast.getSrc());
+					mp.send(theForward);// src, myname,
+				} else {
+					System.out.println("I didn't receive either...");
+				}
+			}
 			break;
 		}
 
 	}
 
+	private boolean checkTimeOrder(MulticastMessage multicast) {
+		// TODO Auto-generated method stub
+		return true;
+	}
+
 	private void deliver(TimeStampMessage message, MessageAction action) throws CloneNotSupportedException {
-		//TODO move from holdback queue
+		// TODO move from holdback queue
 		inputQueue.add(message);
 		if (action == MessageAction.DUPLICATE) {
 			rcvNthTracker.incrementAndGet(1);

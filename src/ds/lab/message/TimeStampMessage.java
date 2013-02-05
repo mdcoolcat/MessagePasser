@@ -57,7 +57,7 @@ public class TimeStampMessage extends Message {
 
 	@Override
 	public String toString() {
-		return timeStamp + " |" + super.toString();
+		return timeStamp + " |";
 	}
 
 }

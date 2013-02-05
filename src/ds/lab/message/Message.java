@@ -18,8 +18,8 @@ public class Message implements Serializable, Cloneable {
 		setId(-1);//for initial use
 	}
 	public Message(String src, String dest, String kind, Object data) {
-		assert src != null;
-		assert dest != null;
+//		assert src != null;
+//		assert dest != null;
 		//TODO assert kind != null;
 		this.header = new Header(src, dest, kind);
 		this.data = data;

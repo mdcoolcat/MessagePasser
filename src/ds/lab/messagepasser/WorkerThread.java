@@ -46,21 +46,20 @@ public class WorkerThread implements Runnable {
 	private final ArrayList<String> peers;// peer name
 	private MessagePasser mp;
 
-	public WorkerThread(MessagePasser mp, Socket connection, ArrayList<String> peers, BlockingQueue<TimeStampMessage> inputQueue, BlockingQueue<TimeStampMessage> delayInputQueue,
-			LinkedList<MulticastMessage> holdbackQueue, BlockingQueue<MulticastMessage> delayHoldbackQueue, AtomicIntegerArray rcvNthTracker, ClockService clock, Config config, HashMap<Integer, HashMap<String, Boolean>> ackList, AtomicInteger lastMulticastId) {
+	public WorkerThread(MessagePasser mp, Socket connection) {
 		super();
-		this.connection = connection;
-		this.inputQueue = inputQueue;// must lock
-		this.delayInputQueue = delayInputQueue;
-		this.holdbackQueue = holdbackQueue;
-		this.delayHoldbackQueue = delayHoldbackQueue;
-		this.rcvNthTracker = rcvNthTracker;
-		this.clock = clock;
-		this.config = config;
 		this.mp = mp;
-		this.ackList = ackList;
-		this.lastMulticastId = lastMulticastId;
-		this.peers = peers;
+		this.connection = connection;
+		this.inputQueue = mp.inputQueue;// must lock
+		this.delayInputQueue = mp.delayInputQueue;
+		this.holdbackQueue = mp.holdbackQueue;
+		this.delayHoldbackQueue = mp.delayHoldbackQueue;
+		this.rcvNthTracker = mp.rcvNthTracker;
+		this.clock = mp.clock;
+		this.config = mp.config;
+		this.ackList = mp.ackList;
+		this.lastMulticastId = mp.lastMulticastId;
+		this.peers = mp.peers;
 		new Thread(this).start();
 	}
 
@@ -142,6 +141,10 @@ public class WorkerThread implements Runnable {
 		int theId = multicast.getMulticcastId();
 		String from = multicast.getSrc();
 		String origin = multicast.getOrigin();
+		synchronized (ackList) {
+			if (!ackList.containsKey(theId))
+				ackList.put(multicast.getMulticcastId(), getAckTracker(multicast.getOrigin()));
+		}
 		System.out.println("checking --- current acklist: " + ackList.get(theId));
 		switch (multicast.getType()) {
 		case MESSAGE:
@@ -162,10 +165,7 @@ public class WorkerThread implements Runnable {
 					}
 				}
 			}
-			synchronized (ackList) {
-				if (!ackList.containsKey(theId))
-					ackList.put(multicast.getMulticcastId(), getAckTracker(multicast.getOrigin()));
-			}
+			
 			// broadcast ack
 			MulticastMessage toAck = new MulticastMessage(theId, origin, localName, null, "ack", MulticastType.ACK, multicast.getData());
 			for (String peer : peers) {
@@ -178,18 +178,14 @@ public class WorkerThread implements Runnable {
 			break;
 		case ACK:// may be dropped by rule before enter this; or duplicate ack,
 					// fine
-			synchronized (ackList) {
-				if (!ackList.containsKey(theId)) {
+//			synchronized (ackList) {
+				ackList.get(theId).put(from, true);
+				if (!holdbackQueue.contains(multicast)) {
 					// i didn't get the message, send NACK
-					HashMap<String, Boolean> myFirstAck = getAckTracker(origin);
-					myFirstAck.put(from, true);
-					ackList.put(theId, myFirstAck);
 					System.out.println("I didn't get the meesage. Send NACK");
 					mp.send(new MulticastMessage(theId, origin, localName, from, "nack", MulticastType.NACK, null));// src,
-				} else {
-					ackList.get(theId).put(from, true);
 				}
-			}
+//			}
 
 			break;
 		case NACK:// this msg.forward didn't get message
@@ -260,7 +256,7 @@ public class WorkerThread implements Runnable {
 	}
 
 	//cannot create scenario to mess up them
-	private boolean checkTimeOrder(MulticastMessage multicast) {
+	private boolean checkTimeOrder(MulticastMessage multicast) {		 
 		int last = lastMulticastId.get();
 		int current = multicast.getMulticcastId();
 		if (last < 0 || (current - last) <= 1) {

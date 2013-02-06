@@ -36,28 +36,28 @@ public class MessagePasser implements MessagePasserApi {
 	private HashMap<String, NodeBean> nodeList;// name-user
 	private HashMap<String, ObjectOutputStream> outStreamMap;// name-socket
 	/** message */
-	private BlockingQueue<TimeStampMessage> inputQueue; // input queue
-	private BlockingQueue<TimeStampMessage> outputQueue; // output queue
-	private BlockingQueue<TimeStampMessage> delayInputQueue; // input queue
+	BlockingQueue<TimeStampMessage> inputQueue; // input queue
+	BlockingQueue<TimeStampMessage> outputQueue; // output queue
+	BlockingQueue<TimeStampMessage> delayInputQueue; // input queue
 	private BlockingQueue<TimeStampMessage> delayOutputQueue; // output queue
-	private LinkedList<MulticastMessage> holdbackQueue;
-	private BlockingQueue<MulticastMessage> delayHoldbackQueue; // input queue
+	LinkedList<MulticastMessage> holdbackQueue;
+	BlockingQueue<MulticastMessage> delayHoldbackQueue; // input queue
 	
 	/** other local information */
 	private String localName;
 	private String configFileName;
 	private HashMap<String, String> ipNameMap; // for reverse lookup by ip, <ip,
-	private HashMap<Integer, HashMap<String, Boolean>> ackList;
-	private ArrayList<String> peers;
+	HashMap<Integer, HashMap<String, Boolean>> ackList;
+	ArrayList<String> peers;
 	private AtomicIntegerArray sendNthTracker;
-	private AtomicIntegerArray rcvNthTracker;
+	AtomicIntegerArray rcvNthTracker;
 	private AtomicInteger lastId;
-	private AtomicInteger lastMulticastId;
+	AtomicInteger lastMulticastId;
 	private final int NUM_ACTION = 3;// DROP, DUPLICATE, DELAY
-	private Config config;
+	Config config;
 
 	/** clock and logger */
-	private ClockService clock;
+	ClockService clock;
 	private LoggerFacility logger;
 
 	/**
@@ -315,7 +315,7 @@ public class MessagePasser implements MessagePasserApi {
 					assert connection.isConnected();
 					String remote = connection.getInetAddress().getHostAddress();
 					sendToLogger(LogLevel.INFO, remote + " has connected to " + localName);
-					new WorkerThread(mp, connection, peers, inputQueue, delayInputQueue, holdbackQueue, delayHoldbackQueue, rcvNthTracker, clock, config, ackList, lastMulticastId);
+					new WorkerThread(mp, connection);
 				}
 			} catch (EOFException e) {// someone offline
 				String remote = e.getMessage();

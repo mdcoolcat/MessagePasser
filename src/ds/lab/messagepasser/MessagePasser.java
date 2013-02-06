@@ -60,7 +60,8 @@ public class MessagePasser implements MessagePasserApi {
 	ClockService clock;
 	private LoggerFacility logger;
 	/** lock */
-	final Lock lock;
+//	final Lock threadLock;
+//	private final Lock sendLock;
 
 	/**
 	 * Constructor read yaml formatted configure file, parse "configuration"
@@ -87,7 +88,8 @@ public class MessagePasser implements MessagePasserApi {
 		int clockid = 1;
 		numOfNodes = MAX_THREAD;
 		clock = ClockService.getClock(clockid, localName, numOfNodes, nodeList);
-		lock = new ReentrantLock();
+//		threadLock = new ReentrantLock();
+//		sendLock = new ReentrantLock();
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {
@@ -146,81 +148,87 @@ public class MessagePasser implements MessagePasserApi {
 	}
 	
 	@Override
-	synchronized public void send(TimeStampMessage message) {
-		assert message.getDest() != null;
-//		if (!isMulticast) {// multicast message already set...
-			message.setId(lastId.incrementAndGet());// TODO keep same if multi?
-			// TODO: We should convert the message to timestampmessage type here
-			TimeStamp ts = this.clock.getNewTimeStamp(localName);// TODO keep
-																	// same if
-																	// multi?
-			message.setTimeStamp(ts);
+	public void send(TimeStampMessage message) {
+//		if (sendLock.tryLock()) {
+//			try {
+				assert message.getDest() != null;
+//				if (!isMulticast) {// multicast message already set...
+					message.setId(lastId.incrementAndGet());// TODO keep same if multi?
+					// TODO: We should convert the message to timestampmessage type here
+					TimeStamp ts = this.clock.getNewTimeStamp(localName);// TODO keep
+																			// same if
+																			// multi?
+					message.setTimeStamp(ts);
+//				}
+				RuleBean theRule = getMatchedSendRule(message);
+				MessageAction action;
+				if (theRule == null) {
+					action = MessageAction.DEFAULT;
+				} else {
+					action = theRule.getAction();
+					if (action != MessageAction.DEFAULT)
+						action = checkSendAction(theRule);
+				}
+				try {
+					if (action != MessageAction.DEFAULT)
+						logger.log(message);
+					TimeStampMessage dup = null;
+					switch (action) {
+					case DROP:// ignore message
+						message = null;
+						break;
+					case DELAY:
+
+						delayOutputQueue.add(message);// don't send
+						break;
+					case DUPLICATE:
+						sendNthTracker.incrementAndGet(1);
+						dup = message.clone();
+						dup.setId(message.getId());
+						dup.setTimeStamp(message.getTimeStamp());
+
+					case DEFAULT:
+						outputQueue.add(message);
+						// now there should be two identical messages. Send delayed
+						// after normal
+						/*
+						 * The dup should be added to outputqueue by
+						 * outputqueue.add(dup) isn't it ?? ----this needs count for
+						 * sending the 2 message. if another thread adds one msg between
+						 * them, you don't know which two should send...my opinion
+						 * RESOLVED-Added to the outputqueue
+						 */
+						connectAndSend(outputQueue.remove());// send the original
+																// message
+
+						if (dup != null) {
+							connectAndSend(dup);
+						}
+
+						synchronized (delayOutputQueue) {
+							while (!delayOutputQueue.isEmpty())
+								connectAndSend(delayOutputQueue.remove());
+						}
+
+					}
+				} catch (UnknownHostException e) {
+					System.err.println("Messager> " + e.getMessage());
+					sendToLogger(LogLevel.WARNING, e.getMessage() + ". Sender: " + localName);
+				} catch (SocketException e) {
+					String msg = "Message cannot be delivered: " + message.getDest() + " is offline";
+					System.err.println(msg);
+					sendToLogger(LogLevel.WARNING, msg);
+				} catch (IOException e) {
+					e.printStackTrace();
+				} catch (CloneNotSupportedException e) {
+					e.printStackTrace();
+				}
+
+//			} finally {
+//				sendLock.unlock();
+//			}
 //		}
-		RuleBean theRule = getMatchedSendRule(message);
-		MessageAction action;
-		if (theRule == null) {
-			action = MessageAction.DEFAULT;
-		} else {
-			action = theRule.getAction();
-			if (action != MessageAction.DEFAULT)
-				action = checkSendAction(theRule);
-		}
-		System.err.println("sendRule: " + action);
-		try {
-			if (action != MessageAction.DEFAULT)
-				logger.log(message);
-			TimeStampMessage dup = null;
-			switch (action) {
-			case DROP:// ignore message
-				message = null;
-				break;
-			case DELAY:
-
-				delayOutputQueue.add(message);// don't send
-				break;
-			case DUPLICATE:
-				sendNthTracker.incrementAndGet(1);
-				dup = message.clone();
-				dup.setId(message.getId());
-				dup.setTimeStamp(message.getTimeStamp());
-
-			case DEFAULT:
-				outputQueue.add(message);
-				// now there should be two identical messages. Send delayed
-				// after normal
-				/*
-				 * The dup should be added to outputqueue by
-				 * outputqueue.add(dup) isn't it ?? ----this needs count for
-				 * sending the 2 message. if another thread adds one msg between
-				 * them, you don't know which two should send...my opinion
-				 * RESOLVED-Added to the outputqueue
-				 */
-				connectAndSend(outputQueue.remove());// send the original
-														// message
-
-				if (dup != null) {
-					connectAndSend(dup);
-				}
-
-				synchronized (delayOutputQueue) {
-					while (!delayOutputQueue.isEmpty())
-						connectAndSend(delayOutputQueue.remove());
-				}
-
 			}
-		} catch (UnknownHostException e) {
-			System.err.println("Messager> " + e.getMessage());
-			sendToLogger(LogLevel.WARNING, e.getMessage() + ". Sender: " + localName);
-		} catch (SocketException e) {
-			String msg = "Message cannot be delivered: " + message.getDest() + " is offline";
-			System.err.println(msg);
-			sendToLogger(LogLevel.WARNING, msg);
-		} catch (IOException e) {
-			e.printStackTrace();
-		} catch (CloneNotSupportedException e) {
-			e.printStackTrace();
-		}
-	}
 
 	private RuleBean getMatchedSendRule(TimeStampMessage tsm) {
 		ArrayList<RuleBean> rules = null;

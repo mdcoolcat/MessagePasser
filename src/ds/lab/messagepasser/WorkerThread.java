@@ -13,6 +13,7 @@ import java.util.ListIterator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
+import java.util.concurrent.locks.Lock;
 
 import ds.lab.bean.RuleBean;
 import ds.lab.bean.TimeStamp;
@@ -44,6 +45,7 @@ public class WorkerThread implements Runnable {
 	private HashMap<Integer, HashMap<String, Boolean>> ackList;// track ack
 	private AtomicInteger lastMulticastId;
 	private final ArrayList<String> peers;// peer name
+	private final Lock lock;;
 	private MessagePasser mp;
 
 	public WorkerThread(MessagePasser mp, Socket connection) {
@@ -60,6 +62,7 @@ public class WorkerThread implements Runnable {
 		this.ackList = mp.ackList;
 		this.lastMulticastId = mp.lastMulticastId;
 		this.peers = mp.peers;
+		this.lock = mp.lock;
 		new Thread(this).start();
 	}
 
@@ -91,7 +94,14 @@ public class WorkerThread implements Runnable {
 				if (message instanceof MulticastMessage) {
 					MulticastMessage multicast = (MulticastMessage) message;
 					System.out.println("incoming<<< " + multicast);
-					checkAndAdd(multicast, action);
+					if (lock.tryLock()) {
+						try {
+							// manipulate protected state
+							checkAndAdd(multicast, action);
+						} finally {
+							lock.unlock();
+						}
+					}
 				} else {// deliver normal msg TODO or when multicast
 					System.out.println("normal msg");
 					deliver(message, action);
@@ -141,14 +151,14 @@ public class WorkerThread implements Runnable {
 		int theId = multicast.getMulticcastId();
 		String from = multicast.getSrc();
 		String origin = multicast.getOrigin();
-		synchronized (ackList) {
+//		synchronized (ackList) {
 			if (!ackList.containsKey(theId))
 				ackList.put(multicast.getMulticcastId(), getAckTracker(multicast.getOrigin()));
-		}
+//		}
 		System.out.println("checking --- current acklist: " + ackList.get(theId));
 		switch (multicast.getType()) {
 		case MESSAGE:
-			synchronized (holdbackQueue) {
+//			synchronized (holdbackQueue) {
 				if (!holdbackQueue.contains(multicast)) {
 					System.out.println("new message add to queue. " + multicast.getMulticcastId());
 					holdbackQueue.add(multicast);
@@ -158,14 +168,15 @@ public class WorkerThread implements Runnable {
 					else {
 						System.out.println("unordered...");
 						if (!delayHoldbackQueue.isEmpty()) {
-							while (!delayHoldbackQueue.isEmpty())//popup all delayed
+							while (!delayHoldbackQueue.isEmpty())
+								// popup all delayed
 								holdbackQueue.add(delayHoldbackQueue.remove());
 							delieverAll(action);
 						}
 					}
 				}
-			}
-			
+//			}
+
 			// broadcast ack
 			MulticastMessage toAck = new MulticastMessage(theId, origin, localName, null, "ack", MulticastType.ACK, multicast.getData());
 			for (String peer : peers) {
@@ -178,18 +189,18 @@ public class WorkerThread implements Runnable {
 			break;
 		case ACK:// may be dropped by rule before enter this; or duplicate ack,
 					// fine
-//			synchronized (ackList) {
-				ackList.get(theId).put(from, true);
-				if (!holdbackQueue.contains(multicast)) {
-					// i didn't get the message, send NACK
-					System.out.println("I didn't get the meesage. Send NACK");
-					mp.send(new MulticastMessage(theId, origin, localName, from, "nack", MulticastType.NACK, null));// src,
-				}
-//			}
+					// synchronized (ackList) {
+			ackList.get(theId).put(from, true);
+			if (!holdbackQueue.contains(multicast)) {
+				// i didn't get the message, send NACK
+				System.out.println("I didn't get the meesage. Send NACK");
+				mp.send(new MulticastMessage(theId, origin, localName, from, "nack", MulticastType.NACK, null));// src,
+			}
+			// }
 
 			break;
 		case NACK:// this msg.forward didn't get message
-			synchronized (holdbackQueue) {
+//			synchronized (holdbackQueue) {
 				if (holdbackQueue.isEmpty()) {
 					System.err.println("sequence wrong. they already ack, no need to forward.");
 				} else {
@@ -212,21 +223,21 @@ public class WorkerThread implements Runnable {
 						System.out.println("I didn't receive either...");
 					}
 				}
-			}
+//			}
 			break;
 		}
 		if (holdbackQueue.contains(multicast)) {// check if all receive
 			// only when itself has
 			// the msg
 			boolean allRcv = true;
-			synchronized (ackList) {
+//			synchronized (ackList) {
 				for (boolean b : ackList.get(theId).values()) {
 					if (!b) {
 						allRcv = false;
 						break;
 					}
 				}
-			}
+//			}
 
 			if (allRcv) {// TODO and order preserved
 				holdbackQueue.remove(multicast);
@@ -255,8 +266,8 @@ public class WorkerThread implements Runnable {
 		lastMulticastId.set(last.getMulticcastId());
 	}
 
-	//cannot create scenario to mess up them
-	private boolean checkTimeOrder(MulticastMessage multicast) {		 
+	// cannot create scenario to mess up them
+	private boolean checkTimeOrder(MulticastMessage multicast) {
 		int last = lastMulticastId.get();
 		int current = multicast.getMulticcastId();
 		if (last < 0 || (current - last) <= 1) {

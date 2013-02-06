@@ -9,8 +9,6 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.NoSuchElementException;
 import java.util.Scanner;
@@ -18,6 +16,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
@@ -59,6 +59,8 @@ public class MessagePasser implements MessagePasserApi {
 	/** clock and logger */
 	ClockService clock;
 	private LoggerFacility logger;
+	/** lock */
+	final Lock lock;
 
 	/**
 	 * Constructor read yaml formatted configure file, parse "configuration"
@@ -85,7 +87,7 @@ public class MessagePasser implements MessagePasserApi {
 		int clockid = 1;
 		numOfNodes = MAX_THREAD;
 		clock = ClockService.getClock(clockid, localName, numOfNodes, nodeList);
-
+		lock = new ReentrantLock();
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {

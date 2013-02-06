@@ -223,11 +223,10 @@ public class WorkerThread implements Runnable {
 			
 			if (allRcv) {// TODO and order preserved
 				holdbackQueue.remove(multicast);
-				System.out.println("all received");
-				ackList.remove(theId);
+				System.out.println("all received\n\n");
+//				ackList.remove(theId);
 			}
 		}
-
 		System.out.println("after checking --- current acklist: " + ackList.get(theId));
 
 	}

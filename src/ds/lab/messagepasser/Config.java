@@ -160,6 +160,7 @@ public class Config {
 
 				keytype++;
 				} catch (NullPointerException e) {
+					keytype++;
 					continue;
 				}
 			}

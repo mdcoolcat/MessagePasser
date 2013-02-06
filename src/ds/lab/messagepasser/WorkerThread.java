@@ -5,10 +5,13 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.ListIterator;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import ds.lab.bean.RuleBean;
@@ -33,28 +36,30 @@ public class WorkerThread implements Runnable {
 	private BlockingQueue<TimeStampMessage> inputQueue; // input queue
 	private BlockingQueue<TimeStampMessage> delayInputQueue;
 	private LinkedList<MulticastMessage> holdbackQueue;
+	private BlockingQueue<MulticastMessage> delayHoldbackQueue;
 	private AtomicIntegerArray rcvNthTracker;
 	private ClockService clock;
 	private Config config;
 	private String localName, remoteName;
 	private HashMap<Integer, HashMap<String, Boolean>> ackList;// track ack
+	private AtomicInteger lastMulticastId;
 	private final ArrayList<String> peers;// peer name
 	private MessagePasser mp;
 
-	public WorkerThread(MessagePasser mp, Socket connection, ArrayList<String> peers,
-			BlockingQueue<TimeStampMessage> inputQueue, BlockingQueue<TimeStampMessage> delayInputQueue,
-			LinkedList<MulticastMessage> holdbackQueue, AtomicIntegerArray rcvNthTracker, ClockService clock,
-			Config config, HashMap<Integer, HashMap<String, Boolean>> ackList) {
+	public WorkerThread(MessagePasser mp, Socket connection, ArrayList<String> peers, BlockingQueue<TimeStampMessage> inputQueue, BlockingQueue<TimeStampMessage> delayInputQueue,
+			LinkedList<MulticastMessage> holdbackQueue, BlockingQueue<MulticastMessage> delayHoldbackQueue, AtomicIntegerArray rcvNthTracker, ClockService clock, Config config, HashMap<Integer, HashMap<String, Boolean>> ackList, AtomicInteger lastMulticastId) {
 		super();
 		this.connection = connection;
 		this.inputQueue = inputQueue;// must lock
 		this.delayInputQueue = delayInputQueue;
 		this.holdbackQueue = holdbackQueue;
+		this.delayHoldbackQueue = delayHoldbackQueue;
 		this.rcvNthTracker = rcvNthTracker;
 		this.clock = clock;
 		this.config = config;
 		this.mp = mp;
 		this.ackList = ackList;
+		this.lastMulticastId = lastMulticastId;
 		this.peers = peers;
 		new Thread(this).start();
 	}
@@ -100,7 +105,7 @@ public class WorkerThread implements Runnable {
 				in.close();
 				throw new EOFException(remoteName);
 			} catch (IOException e1) {
-//				e1.printStackTrace();
+				// e1.printStackTrace();
 			}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
@@ -133,8 +138,7 @@ public class WorkerThread implements Runnable {
 	 * @throws CloneNotSupportedException
 	 * @throws InterruptedException
 	 */
-	private void checkAndAdd(MulticastMessage multicast, MessageAction action) throws CloneNotSupportedException,
-			InterruptedException {
+	private void checkAndAdd(MulticastMessage multicast, MessageAction action) throws CloneNotSupportedException, InterruptedException {
 		int theId = multicast.getMulticcastId();
 		String from = multicast.getSrc();
 		String origin = multicast.getOrigin();
@@ -148,6 +152,14 @@ public class WorkerThread implements Runnable {
 					Thread.sleep(500);// TODO
 					if (checkTimeOrder(multicast))
 						deliver(multicast, action);
+					else {
+						System.out.println("unordered...");
+						if (!delayHoldbackQueue.isEmpty()) {
+							while (!delayHoldbackQueue.isEmpty())//popup all delayed
+								holdbackQueue.add(delayHoldbackQueue.remove());
+							delieverAll(action);
+						}
+					}
 				}
 			}
 			synchronized (ackList) {
@@ -155,8 +167,7 @@ public class WorkerThread implements Runnable {
 					ackList.put(multicast.getMulticcastId(), getAckTracker(multicast.getOrigin()));
 			}
 			// broadcast ack
-			MulticastMessage toAck = new MulticastMessage(theId, origin, localName, null, "ack", MulticastType.ACK,
-					multicast.getData());
+			MulticastMessage toAck = new MulticastMessage(theId, origin, localName, null, "ack", MulticastType.ACK, multicast.getData());
 			for (String peer : peers) {
 				if (peer.equalsIgnoreCase(origin))
 					continue;
@@ -220,24 +231,46 @@ public class WorkerThread implements Runnable {
 					}
 				}
 			}
-			
+
 			if (allRcv) {// TODO and order preserved
 				holdbackQueue.remove(multicast);
 				System.out.println("all received\n\n");
-//				ackList.remove(theId);
+				// ackList.remove(theId);
 			}
 		}
 		System.out.println("after checking --- current acklist: " + ackList.get(theId));
 
 	}
 
+	private void delieverAll(MessageAction action) throws CloneNotSupportedException {
+		Collections.sort(holdbackQueue, new Comparator<MulticastMessage>() {
+			@Override
+			public int compare(MulticastMessage o1, MulticastMessage o2) {
+				return o1.getMulticcastId() - o2.getMulticcastId();
+			}
+		});
+		MulticastMessage last = holdbackQueue.getLast();
+		for (MulticastMessage m : holdbackQueue) {
+			if (m == last)
+				deliver(m, action);
+			else
+				deliver(m, MessageAction.DEFAULT);
+		}
+		lastMulticastId.set(last.getMulticcastId());
+	}
+
+	//cannot create scenario to mess up them
 	private boolean checkTimeOrder(MulticastMessage multicast) {
-		// TODO Auto-generated method stub
-		return true;
+		int last = lastMulticastId.get();
+		int current = multicast.getMulticcastId();
+		if (last < 0 || (current - last) <= 1) {
+			lastMulticastId.set(current);
+			return true;
+		}
+		return false;
 	}
 
 	private void deliver(TimeStampMessage message, MessageAction action) throws CloneNotSupportedException {
-		// TODO move from holdback queue
 		inputQueue.add(message);
 		if (action == MessageAction.DUPLICATE) {
 			rcvNthTracker.incrementAndGet(1);
@@ -258,8 +291,12 @@ public class WorkerThread implements Runnable {
 			if (action != MessageAction.DEFAULT)
 				action = checkReceiveAction(theRule);
 		}
-		if (action == MessageAction.DELAY)
-			delayInputQueue.add(message);// TODO put into holdbackQueue
+		if (action == MessageAction.DELAY) {
+			if (message instanceof MulticastMessage)
+				delayHoldbackQueue.add((MulticastMessage) message);
+			else
+				delayInputQueue.add(message);
+		}
 		return action;
 	}
 

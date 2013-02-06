@@ -41,6 +41,8 @@ public class MessagePasser implements MessagePasserApi {
 	private BlockingQueue<TimeStampMessage> delayInputQueue; // input queue
 	private BlockingQueue<TimeStampMessage> delayOutputQueue; // output queue
 	private LinkedList<MulticastMessage> holdbackQueue;
+	private BlockingQueue<MulticastMessage> delayHoldbackQueue; // input queue
+	
 	/** other local information */
 	private String localName;
 	private String configFileName;
@@ -108,6 +110,7 @@ public class MessagePasser implements MessagePasserApi {
 		delayInputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		delayOutputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		holdbackQueue = new LinkedList<MulticastMessage>();
+		delayHoldbackQueue = new LinkedBlockingDeque<MulticastMessage>();
 		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		/* listener */
@@ -312,7 +315,7 @@ public class MessagePasser implements MessagePasserApi {
 					assert connection.isConnected();
 					String remote = connection.getInetAddress().getHostAddress();
 					sendToLogger(LogLevel.INFO, remote + " has connected to " + localName);
-					new WorkerThread(mp, connection, peers, inputQueue, delayInputQueue, holdbackQueue, rcvNthTracker, clock, config, ackList);
+					new WorkerThread(mp, connection, peers, inputQueue, delayInputQueue, holdbackQueue, delayHoldbackQueue, rcvNthTracker, clock, config, ackList, lastMulticastId);
 				}
 			} catch (EOFException e) {// someone offline
 				String remote = e.getMessage();
@@ -374,9 +377,9 @@ public class MessagePasser implements MessagePasserApi {
 									if ((lastId.get() < m.getId()) || (lastId.get() == m.getId()))
 										lastId.set(m.getId());
 								}
-								if (m instanceof MulticastMessage) {
-									lastMulticastId.incrementAndGet();
-								}
+//								if (m instanceof MulticastMessage) {
+//									lastMulticastId.incrementAndGet();
+//								}
 								System.out.println(m.getSrc() + "> " + m + " " + m.getData());
 							}
 						} else

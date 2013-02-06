@@ -12,16 +12,6 @@ public class MulticastMessage extends TimeStampMessage {
 	private String origin;
 	private MulticastType type;
 
-//	public MulticastMessage(String src, String dest, String kind, Object data) {
-//		super(src, dest, kind, data);
-//	}
-
-//	public MulticastMessage(String src, String forward, String dest, String kind, MulticastType type, Object data) {
-//		super(src, dest, kind, data);
-//		this.forward = forward;
-//		this.type = type;
-//	}
-
 	/**
 	 * 
 	 * @param origin

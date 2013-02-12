@@ -14,14 +14,14 @@ import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import ds.lab.bean.NodeBean;
 import ds.lab.bean.RuleBean;
 import ds.lab.bean.TimeStamp;
+import ds.lab.clock.ClockService;
 import ds.lab.log.LogLevel;
 import ds.lab.log.LoggerFacility;
 import ds.lab.message.MessageAction;
@@ -42,13 +42,15 @@ public class MessagePasser implements MessagePasserApi {
 	private BlockingQueue<TimeStampMessage> delayOutputQueue; // output queue
 	LinkedList<MulticastMessage> holdbackQueue;
 	BlockingQueue<MulticastMessage> delayHoldbackQueue; // input queue
-	
+	BlockingQueue<MulticastMessage> requestQueue;
+
 	/** other local information */
 	private String localName;
 	private String configFileName;
 	private HashMap<String, String> ipNameMap; // for reverse lookup by ip, <ip,
 	HashMap<Integer, HashMap<String, Boolean>> ackList;
 	ArrayList<String> peers;
+	String[] group;
 	private AtomicIntegerArray sendNthTracker;
 	AtomicIntegerArray rcvNthTracker;
 	private AtomicInteger lastId;
@@ -59,9 +61,12 @@ public class MessagePasser implements MessagePasserApi {
 	/** clock and logger */
 	ClockService clock;
 	private LoggerFacility logger;
+
 	/** lock */
-//	final Lock threadLock;
-//	private final Lock sendLock;
+	// final Lock threadLock;
+	// private final Lock sendLock;
+	LockState state;
+	boolean voted;
 
 	/**
 	 * Constructor read yaml formatted configure file, parse "configuration"
@@ -85,11 +90,14 @@ public class MessagePasser implements MessagePasserApi {
 		logger = new LoggerFacility(lg.getName(), lg.getIp(), lg.getPort());
 		nodeList.remove("logger");
 		int numOfNodes;
-		int clockid = 1;
+		int clockid = 0;
 		numOfNodes = MAX_THREAD;
 		clock = ClockService.getClock(clockid, localName, numOfNodes, nodeList);
-//		threadLock = new ReentrantLock();
-//		sendLock = new ReentrantLock();
+		/* locks */
+		// threadLock = new ReentrantLock();
+		// sendLock = new ReentrantLock();
+		state = LockState.RELEASED;
+		voted = false;
 		/* build my listening socket */
 		NodeBean me = nodeList.get(localName);
 		if (me == null) {
@@ -99,22 +107,26 @@ public class MessagePasser implements MessagePasserApi {
 		this.configFileName = configurationFile;
 		lastId = new AtomicInteger(-1);
 		lastMulticastId = new AtomicInteger(-1);
-		nodeList.remove(localName);
+		// nodeList.remove(localName);
 		ipNameMap = new HashMap<String, String>();
-		ackList = new HashMap<Integer, HashMap<String,Boolean>>();
-		peers = new ArrayList<String>();
+		ackList = new HashMap<Integer, HashMap<String, Boolean>>();
+		// peers = new ArrayList<String>();
+		group = config.GROUPS.get(localName);
 		for (NodeBean n : nodeList.values()) {
 			ipNameMap.put(n.getIp(), n.getName());
-			peers.add(n.getName());
+			// peers.add(n.getName());
 		}
-		System.out.println("my peers: " + peers);
+		for (String s : group)
+			System.out.print(s + ", ");
+		System.out.println();
 		/* queues and trackers */
 		inputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		outputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		delayInputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		delayOutputQueue = new LinkedBlockingDeque<TimeStampMessage>();
 		holdbackQueue = new LinkedList<MulticastMessage>();
-		delayHoldbackQueue = new LinkedBlockingDeque<MulticastMessage>();
+		delayHoldbackQueue = new LinkedBlockingQueue<MulticastMessage>();
+		requestQueue = new LinkedBlockingQueue<MulticastMessage>();
 		sendNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		rcvNthTracker = new AtomicIntegerArray(NUM_ACTION);
 		/* listener */
@@ -146,89 +158,89 @@ public class MessagePasser implements MessagePasserApi {
 			e.printStackTrace();
 		}
 	}
-	
+
 	@Override
 	public void send(TimeStampMessage message) {
-//		if (sendLock.tryLock()) {
-//			try {
-				assert message.getDest() != null;
-//				if (!isMulticast) {// multicast message already set...
-					message.setId(lastId.incrementAndGet());// TODO keep same if multi?
-					// TODO: We should convert the message to timestampmessage type here
-					TimeStamp ts = this.clock.getNewTimeStamp(localName);// TODO keep
-																			// same if
-																			// multi?
-					message.setTimeStamp(ts);
-//				}
-				RuleBean theRule = getMatchedSendRule(message);
-				MessageAction action;
-				if (theRule == null) {
-					action = MessageAction.DEFAULT;
-				} else {
-					action = theRule.getAction();
-					if (action != MessageAction.DEFAULT)
-						action = checkSendAction(theRule);
+		// if (sendLock.tryLock()) {
+		// try {
+		assert message.getDest() != null;
+		// if (!isMulticast) {// multicast message already set...
+		message.setId(lastId.incrementAndGet());// TODO keep same if multi?
+		// TODO: We should convert the message to timestampmessage type here
+		TimeStamp ts = this.clock.getNewTimeStamp(localName);// TODO keep
+																// same if
+																// multi?
+		message.setTimeStamp(ts);
+		// }
+		RuleBean theRule = getMatchedSendRule(message);
+		MessageAction action;
+		if (theRule == null) {
+			action = MessageAction.DEFAULT;
+		} else {
+			action = theRule.getAction();
+			if (action != MessageAction.DEFAULT)
+				action = checkSendAction(theRule);
+		}
+		try {
+			if (action != MessageAction.DEFAULT)
+				logger.log(message);
+			TimeStampMessage dup = null;
+			switch (action) {
+			case DROP:// ignore message
+				message = null;
+				break;
+			case DELAY:
+				delayOutputQueue.add(message);// don't send
+				break;
+			case DUPLICATE:
+				if (!(message instanceof MulticastMessage)) {
+					sendNthTracker.incrementAndGet(1);
+					dup = message.clone();
+					dup.setId(message.getId());
+					dup.setTimeStamp(message.getTimeStamp());
 				}
-				try {
-					if (action != MessageAction.DEFAULT)
-						logger.log(message);
-					TimeStampMessage dup = null;
-					switch (action) {
-					case DROP:// ignore message
-						message = null;
-						break;
-					case DELAY:
+			case DEFAULT:
+				outputQueue.add(message);
+				// now there should be two identical messages. Send delayed
+				// after normal
+				/*
+				 * The dup should be added to outputqueue by
+				 * outputqueue.add(dup) isn't it ?? ----this needs count for
+				 * sending the 2 message. if another thread adds one msg between
+				 * them, you don't know which two should send...my opinion
+				 * RESOLVED-Added to the outputqueue
+				 */
+				connectAndSend(outputQueue.remove());// send the original
+														// message
 
-						delayOutputQueue.add(message);// don't send
-						break;
-					case DUPLICATE:
-						sendNthTracker.incrementAndGet(1);
-						dup = message.clone();
-						dup.setId(message.getId());
-						dup.setTimeStamp(message.getTimeStamp());
-
-					case DEFAULT:
-						outputQueue.add(message);
-						// now there should be two identical messages. Send delayed
-						// after normal
-						/*
-						 * The dup should be added to outputqueue by
-						 * outputqueue.add(dup) isn't it ?? ----this needs count for
-						 * sending the 2 message. if another thread adds one msg between
-						 * them, you don't know which two should send...my opinion
-						 * RESOLVED-Added to the outputqueue
-						 */
-						connectAndSend(outputQueue.remove());// send the original
-																// message
-
-						if (dup != null) {
-							connectAndSend(dup);
-						}
-
-						synchronized (delayOutputQueue) {
-							while (!delayOutputQueue.isEmpty())
-								connectAndSend(delayOutputQueue.remove());
-						}
-
-					}
-				} catch (UnknownHostException e) {
-					System.err.println("Messager> " + e.getMessage());
-					sendToLogger(LogLevel.WARNING, e.getMessage() + ". Sender: " + localName);
-				} catch (SocketException e) {
-					String msg = "Message cannot be delivered: " + message.getDest() + " is offline";
-					System.err.println(msg);
-					sendToLogger(LogLevel.WARNING, msg);
-				} catch (IOException e) {
-					e.printStackTrace();
-				} catch (CloneNotSupportedException e) {
-					e.printStackTrace();
+				if (dup != null) {
+					connectAndSend(dup);
 				}
 
-//			} finally {
-//				sendLock.unlock();
-//			}
-//		}
+				synchronized (delayOutputQueue) {
+					while (!delayOutputQueue.isEmpty())
+						connectAndSend(delayOutputQueue.remove());
+				}
+
 			}
+		} catch (UnknownHostException e) {
+			System.err.println("Messager> " + e.getMessage());
+			sendToLogger(LogLevel.WARNING, e.getMessage() + ". Sender: " + localName);
+		} catch (SocketException e) {
+			String msg = "Message cannot be delivered: " + message.getDest() + " is offline";
+			System.err.println(msg);
+			sendToLogger(LogLevel.WARNING, msg);
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (CloneNotSupportedException e) {
+			e.printStackTrace();
+		}
+
+		// } finally {
+		// sendLock.unlock();
+		// }
+		// }
+	}
 
 	private RuleBean getMatchedSendRule(TimeStampMessage tsm) {
 		ArrayList<RuleBean> rules = null;
@@ -271,7 +283,7 @@ public class MessagePasser implements MessagePasserApi {
 		out.writeObject(tsm);
 		out.flush();
 		out.reset();
-		System.err.println("sent>>>>>>>>> "+ tsm);
+		System.err.println("sent>>>>>>>>> " + tsm);
 	}
 
 	@Override
@@ -283,7 +295,8 @@ public class MessagePasser implements MessagePasserApi {
 				TimeStampMessage message = inputQueue.remove();// examine the
 																// 1st one
 				incoming.add(message);
-				if (!inputQueue.isEmpty() && message.equals(inputQueue.peek())) // check duplicate
+				if (!inputQueue.isEmpty() && message.equals(inputQueue.peek())) // check
+																				// duplicate
 					incoming.add(inputQueue.remove());
 			}
 			synchronized (delayInputQueue) {
@@ -305,7 +318,7 @@ public class MessagePasser implements MessagePasserApi {
 
 	private class ListenThread implements Runnable {
 		private MessagePasser mp;
-		
+
 		public ListenThread(MessagePasser messagePasser) {
 			this.mp = messagePasser;
 		}
@@ -356,7 +369,10 @@ public class MessagePasser implements MessagePasserApi {
 			Scanner sc = null;
 			try {
 				while (true) {
-					System.err.println("Messager> Choose: 0. Send(S)\t1. Receive(R)\t2. Multicast(M)");
+//					if (state == LockState.WANTED) {
+//						continue;
+//					}
+					System.err.println("Messager> Choose: 0. Send(S)\t1. Receive(R)\t2. Multicast(M)\t3. Request\t4. Release");
 					sc = new Scanner(System.in);
 					String input = sc.nextLine().toLowerCase();
 					if (input.equals("0") || input.equals("send") || input.equals("s")) {
@@ -387,19 +403,39 @@ public class MessagePasser implements MessagePasserApi {
 									if ((lastId.get() < m.getId()) || (lastId.get() == m.getId()))
 										lastId.set(m.getId());
 								}
-//								if (m instanceof MulticastMessage) {
-//									lastMulticastId.incrementAndGet();
-//								}
+								// if (m instanceof MulticastMessage) {
+								// lastMulticastId.incrementAndGet();
+								// }
 								System.out.println(m.getSrc() + "> " + m + " " + m.getData());
 							}
 						} else
 							System.err.println("Messager> no message");
 					} else if (input.equals("2") || input.equalsIgnoreCase("multicast") || input.equals("m")) {
-						System.out.println("\nMessager> Enter kind of the message:");
+						System.err.println("\nMessager> Enter kind of the message:");
 						String mk = sc.nextLine();
 						System.err.println("\nMessager> Input Message in 144 chars:");
 						String outMessage = sc.nextLine();
 						multicast(mk, MulticastType.MESSAGE, outMessage);
+					} else if (input.equals("3")) {
+						synchronized (state) {
+							if (state == LockState.RELEASED) {
+								state = LockState.WANTED;
+								multicast("request", MulticastType.REQUEST, null);
+							} else {
+								if (state == LockState.HELD)
+									System.err.println("\nMessager> You ARE holding a lock");
+								else
+									System.err.println("\nMessager> You have requested a lock. BLOCKING");
+							}
+						}
+					} else if (input.equals("4")) {
+						synchronized (state) {
+							if (state == LockState.HELD) {
+								state = LockState.RELEASED;
+								multicast("release", MulticastType.RELEASE, null);
+							} else
+								System.err.println("\nMessager> You do NOT hold a lock");
+						}
 					} else {
 						System.err.println("Messager> Invalid input");
 					}
@@ -412,23 +448,22 @@ public class MessagePasser implements MessagePasserApi {
 				sc.close();
 			}
 		}
-		
 
 		private TimeStampMessage unicastMessage(String dest, String kind, Object data) {
 			TimeStampMessage msg = new TimeStampMessage(localName, dest, kind.toLowerCase(), data);
 			send(msg);
 			return msg;
 		}
-		
+
 		private void multicast(String kind, MulticastType type, Object data) {
+			// TODO peers change to group in constructor
 			int id = lastMulticastId.incrementAndGet();
-			for (String member : peers) {
+			for (String member : group) {// peers include myself
 				MulticastMessage message = new MulticastMessage(localName, localName, member, kind, type, data);
 				message.setMulticcastId(id);
 				send(message);
 			}
 		}
-
 
 	}
 }

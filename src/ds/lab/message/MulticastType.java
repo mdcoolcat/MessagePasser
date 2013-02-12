@@ -1,5 +1,5 @@
 package ds.lab.message;
 
 public enum MulticastType {
-	MESSAGE, ACK, NACK;
+	MESSAGE, ACK, NACK, REQUEST, RELEASE, VOTE;
 }

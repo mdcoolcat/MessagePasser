@@ -18,7 +18,9 @@ import ds.lab.bean.RuleBean;
 import ds.lab.message.MessageAction;
 
 public class Config {
-	public  HashMap<String, NodeBean> NODELIST;// assume remain unchange. TODO port change..
+	private final int GROUP_SIZE = 3;
+	public HashMap<String, NodeBean> NODELIST;// assume remain unchange. TODO port change..
+	public HashMap<String, String[]> GROUPS;// assume remain unchange. TODO port change..
 	public ArrayList<RuleBean> sendRules;// may change
 	public ArrayList<RuleBean> rcvRules;// may change
 
@@ -29,7 +31,14 @@ public class Config {
 	public Config(String configurationFile, String localName) {
 		this.configurationFile = configurationFile;
 		this.localName = localName;
-		
+		this.GROUPS = new HashMap<String, String[]>();
+		this.GROUPS.put("alice", new String[] {"alice", "bob", "charlie"});
+		this.GROUPS.put("bob", new String[] {"bob", "daphnie", "frank"});
+		this.GROUPS.put("charlie", new String[] {"charlie", "erica", "frank"});
+		this.GROUPS.put("daphnie", new String[] {"alice", "daphnie", "erica"});
+		this.GROUPS.put("erica", new String[] {"bob", "erica", "gary"});
+		this.GROUPS.put("frank", new String[] {"alice", "frank", "gary"});
+		this.GROUPS.put("gary", new String[] {"charlie", "daphnie", "gary"});
 		this.parseConfigFile(this.configurationFile,this.localName);
 	}
 	

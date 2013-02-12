@@ -12,6 +12,7 @@ import java.util.Scanner;
 import java.util.TreeSet;
 
 import ds.lab.bean.NodeBean;
+import ds.lab.clock.ClockService;
 import ds.lab.message.TimeStampMessage;
 
 /**

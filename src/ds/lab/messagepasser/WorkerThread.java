@@ -13,10 +13,10 @@ import java.util.ListIterator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
-import java.util.concurrent.locks.Lock;
 
 import ds.lab.bean.RuleBean;
 import ds.lab.bean.TimeStamp;
+import ds.lab.clock.ClockService;
 import ds.lab.message.Message;
 import ds.lab.message.MessageAction;
 import ds.lab.message.MulticastMessage;
@@ -38,13 +38,15 @@ public class WorkerThread implements Runnable {
 	private BlockingQueue<TimeStampMessage> delayInputQueue;
 	private LinkedList<MulticastMessage> holdbackQueue;
 	private BlockingQueue<MulticastMessage> delayHoldbackQueue;
+	private BlockingQueue<MulticastMessage> requestQueue;
 	private AtomicIntegerArray rcvNthTracker;
 	private ClockService clock;
 	private Config config;
 	private String localName, remoteName;
 	private HashMap<Integer, HashMap<String, Boolean>> ackList;// track ack
 	private AtomicInteger lastMulticastId;
-	private final ArrayList<String> peers;// peer name
+//	private final ArrayList<String> group;// peer name
+	private final String[] group;
 	// private final Lock lock;;
 	private MessagePasser mp;
 
@@ -61,7 +63,7 @@ public class WorkerThread implements Runnable {
 		this.config = mp.config;
 		this.ackList = mp.ackList;
 		this.lastMulticastId = mp.lastMulticastId;
-		this.peers = mp.peers;
+		this.group = mp.group;
 		// this.lock = mp.threadLock;
 		new Thread(this).start();
 	}
@@ -88,7 +90,7 @@ public class WorkerThread implements Runnable {
 				// System.out.println("after receive() my ts: " +
 				// clock.getCurrentTimeStamp(message.getDest()));
 				MessageAction action = checkReceiveRule(message);
-				System.err.println("receive rule: " + action);
+//				System.err.println("receive rule: " + action);
 				if (action == MessageAction.DROP || action == MessageAction.DELAY)
 					continue;
 				if (message instanceof MulticastMessage) {
@@ -131,7 +133,7 @@ public class WorkerThread implements Runnable {
 	 */
 	private HashMap<String, Boolean> getAckTracker(String src) {
 		HashMap<String, Boolean> acks = new HashMap<String, Boolean>();
-		for (String p : peers) {
+		for (String p : group) {
 			if (p.equals(src))
 				continue;
 			acks.put(p, false);
@@ -156,6 +158,26 @@ public class WorkerThread implements Runnable {
 				ackList.put(multicast.getMulticcastId(), getAckTracker(multicast.getOrigin()));
 		}
 		switch (multicast.getType()) {
+		case REQUEST:
+			LockState lockState;
+			boolean voted;
+			synchronized (mp) {
+				lockState = mp.state;
+				voted = mp.voted;
+			}
+			if (lockState == LockState.HELD || voted) {
+				System.out.println("SOMEONE IS HOLDING THE LOCK. DO NOT VOTE. QUEUE THE REQUEST.");
+				synchronized (holdbackQueue) {
+					holdbackQueue.add(multicast);
+				}
+			} else {
+				System.out.println("vote for "+from);
+				synchronized (mp) {//unicast
+					mp.send(new MulticastMessage(theId, origin, localName, from, "vote", MulticastType.VOTE, null));
+					mp.voted = true;
+				}
+			}
+			break;
 		case MESSAGE:
 			synchronized (holdbackQueue) {
 				if (!holdbackQueue.contains(multicast)) {
@@ -177,12 +199,35 @@ public class WorkerThread implements Runnable {
 
 			// broadcast ack
 			MulticastMessage toAck = new MulticastMessage(theId, origin, localName, null, "ack", MulticastType.ACK, multicast.getData());
-			for (String peer : peers) {
+			for (String peer : group) {
 				if (peer.equalsIgnoreCase(origin))
 					continue;
 				MulticastMessage ack = toAck.clone();
 				ack.setDest(peer);
 				mp.send(ack);
+			}
+			break;
+		case RELEASE:
+			if (holdbackQueue.isEmpty()) {
+				synchronized (mp) {
+					mp.voted = false;
+				}
+			} else {
+				MulticastMessage next;
+				synchronized (holdbackQueue) {
+					next = holdbackQueue.remove();
+				}
+				String requester = next.getOrigin();
+				System.out.println("vote for "+ requester);
+				synchronized (mp) {//unicast
+					mp.send(new MulticastMessage(next.getMulticcastId(), requester, localName, requester, "vote", MulticastType.VOTE, null));
+					mp.voted = true;
+				}
+			}
+			break;
+		case VOTE:
+			synchronized (ackList) {
+				ackList.get(theId).put(from, true);
 			}
 			break;
 		case ACK:// may be dropped by rule before enter this; or duplicate ack,
@@ -226,15 +271,18 @@ public class WorkerThread implements Runnable {
 			}
 			break;
 		}
-		if (holdbackQueue.contains(multicast)) {// check if all receive
+//		if (holdbackQueue.contains(multicast)) {// check if all receive
 			// only when itself has
 			// the msg
 			if (checkAllRcv(theId)) {// TODO and order preserved
 				holdbackQueue.remove(multicast);
-				System.out.println("all received\n\n");
+				synchronized (mp.state) {
+					mp.state = LockState.HELD;
+				}
+				System.out.println("\nGOT LOCK@@@@@@@@ "+localName+" @@@@@@@@LOCK GOT\n");
 				// ackList.remove(theId);
 			}
-		}
+//		}
 //		System.out.println("after checking --- current acklist: " + ackList.get(theId));
 
 	}
@@ -282,13 +330,13 @@ public class WorkerThread implements Runnable {
 
 	private void deliver(TimeStampMessage message, MessageAction action) throws CloneNotSupportedException {
 		inputQueue.add(message);
-		if (action == MessageAction.DUPLICATE) {
-			rcvNthTracker.incrementAndGet(1);
-			TimeStampMessage dup = message.clone();// add to list later
-			dup.setId(message.getId());
-			dup.setTimeStamp(message.getTimeStamp());
-			inputQueue.add(dup);
-		}
+//		if (action == MessageAction.DUPLICATE) {
+//			rcvNthTracker.incrementAndGet(1);
+//			TimeStampMessage dup = message.clone();// add to list later
+//			dup.setId(message.getId());
+//			dup.setTimeStamp(message.getTimeStamp());
+//			inputQueue.add(dup);
+//		}
 	}
 
 	private MessageAction checkReceiveRule(TimeStampMessage message) {
